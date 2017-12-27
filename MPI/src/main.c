@@ -5,11 +5,14 @@
 #include <time.h>
 #include <math.h>
 
-
-const int MAX_STRING = 100;
-
 #define N 2520
 #define M 1920
+
+static inline void convolution(short int **Table,short int **Final,int i,int j,float h[3][3]){
+   Final[i][j] = (short int)(h[0][0] * Table[i-1][j-1]) + (short int)(h[0][1] * Table[i-1][j]) + (short int)(h[0][2]*Table[i-1][j+1]) +
+      (short int)(Table[i][j-1] * h[1][0]) + (short int)(h[1][1]*Table[i][j]) + (short int)(h[1][2] * Table[i][j+1]) + 
+      (short int)(h[2][0]*Table[i+1][j-1])+(short int)(h[2][1] *Table[i+1][j]) + (short int)(h[2][2] *Table[i+1][j+1]);
+}
 
 int main(void) {
    srand(time(NULL));
@@ -269,9 +272,7 @@ int main(void) {
       //Do for our table
       for(int i=2;i<rows_per_block;i++){
          for(int j=2;j<cols_per_block;j++){
-            Final[i][j] = (short int)(h[0][0] * Table[i-1][j-1]) + (short int)(h[0][1] * Table[i-1][j]) + (short int)(h[0][2]*Table[i-1][j+1]) +
-            (short int)(Table[i][j-1] * h[1][0]) + (short int)(h[1][1]*Table[i][j]) + (short int)(h[1][2] * Table[i][j+1]) + 
-            (short int)(h[2][0]*Table[i+1][j-1])+(short int)(h[2][1] *Table[i+1][j]) + (short int)(h[2][2] *Table[i+1][j+1]);
+            convolution(Table, Final,i,j,h);
             if(!changes && Final[i][j] != Table[i][j]){
                changes++;
             }
@@ -283,9 +284,7 @@ int main(void) {
       for(int i=1;i<rows_per_block+1;i++){
          if((i == 1) || (i == rows_per_block)){
             for(int j=1;j<cols_per_block+1;j++){
-               Final[i][j] = (short int)(h[0][0] * Table[i-1][j-1]) + (short int)(h[0][1] * Table[i-1][j]) + (short int)(h[0][2]*Table[i-1][j+1]) +
-                     (short int)(Table[i][j-1] * h[1][0]) + (short int)(h[1][1]*Table[i][j]) + (short int)(h[1][2] * Table[i][j+1]) + 
-                     (short int)(h[2][0]*Table[i+1][j-1])+(short int)(h[2][1] *Table[i+1][j]) + (short int)(h[2][2] *Table[i+1][j+1]);
+               convolution(Table, Final,i,j,h);
                if(!changes && Final[i][j] != Table[i][j]){
                   changes++;
                }
@@ -293,16 +292,12 @@ int main(void) {
          }
          else{
             int j = 1;
-            Final[i][j] = (short int)(h[0][0] * Table[i-1][j-1]) + (short int)(h[0][1] * Table[i-1][j]) + (short int)(h[0][2]*Table[i-1][j+1]) +
-                     (short int)(Table[i][j-1] * h[1][0]) + (short int)(h[1][1]*Table[i][j]) + (short int)(h[1][2] * Table[i][j+1]) + 
-                     (short int)(h[2][0]*Table[i+1][j-1])+(short int)(h[2][1] *Table[i+1][j]) + (short int)(h[2][2] *Table[i+1][j+1]);
+            convolution(Table,Final,i,j,h);
             if(!changes && Final[i][j] != Table[i][j]){
                changes++;
             }
             j = cols_per_block;
-            Final[i][j] = (short int)(h[0][0] * Table[i-1][j-1]) + (short int)(h[0][1] * Table[i-1][j]) + (short int)(h[0][2]*Table[i-1][j+1]) +
-                     (short int)(Table[i][j-1] * h[1][0]) + (short int)(h[1][1]*Table[i][j]) + (short int)(h[1][2] * Table[i][j+1]) + 
-                     (short int)(h[2][0]*Table[i+1][j-1])+(short int)(h[2][1] *Table[i+1][j]) + (short int)(h[2][2] *Table[i+1][j+1]);
+            convolution(Table,Final,i,j,h);
             if(!changes && Final[i][j] != Table[i][j]){
                changes++;
             }
