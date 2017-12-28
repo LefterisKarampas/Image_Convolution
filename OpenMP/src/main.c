@@ -29,10 +29,11 @@ void Usage(char *prog_name) {
 }  /* Usage */
 
 
-static inline void convolution(short int **Table,short int **Final,int i,int j,float h[3][3]){
+static inline int convolution(short int **Table,short int **Final,int i,int j,float h[3][3]){
    Final[i][j] = (short int)(h[0][0] * Table[i-1][j-1]) + (short int)(h[0][1] * Table[i-1][j]) + (short int)(h[0][2]*Table[i-1][j+1]) +
       (short int)(Table[i][j-1] * h[1][0]) + (short int)(h[1][1]*Table[i][j]) + (short int)(h[1][2] * Table[i][j+1]) + 
       (short int)(h[2][0]*Table[i+1][j-1])+(short int)(h[2][1] *Table[i+1][j]) + (short int)(h[2][2] *Table[i+1][j+1]);
+   return (Final[i][j] == Table[i][j]); 
 }
 
 int main(int argc,char **argv) {
@@ -119,6 +120,7 @@ int main(int argc,char **argv) {
       printf("cols_per_block: %d\n", cols_per_block);
       printf("blocks_per_row: %d\n",blocks_per_row);
       printf("blocks_per_col: %d\n",blocks_per_col);
+      printf("num_threads: %d\n",thread_count);
 
    }
 
@@ -283,6 +285,8 @@ int main(int argc,char **argv) {
    MPI_Recv_init(&Table[rows_per_block+1][cols_per_block+1],1,MPI_SHORT,SE,tag,comm,&receive_request[7]);
   
 
+   MPI_Barrier(MPI_COMM_WORLD);
+
    MPI_Status status[8];
    int loop = 0;
    int changes = 0;
@@ -302,37 +306,26 @@ int main(int argc,char **argv) {
       //Do for our table
       for(int i=2;i<rows_per_block;i++){
          for(int j=2;j<cols_per_block;j++){
-            convolution(Table, Final,i,j,h);
-            if(!changes && Final[i][j] != Table[i][j]){
-               changes++;
-            }
+            changes += convolution(Table, Final,i,j,h);
          }
       }
       MPI_Waitall(8, receive_request,status);
 
       //do the job for receive
-      for(int i=1;i<rows_per_block+1;i++){
-         if((i == 1) || (i == rows_per_block)){
-            for(int j=1;j<cols_per_block+1;j++){
-               convolution(Table, Final,i,j,h);
-               if(!changes && Final[i][j] != Table[i][j]){
-                  changes++;
-               }
-            }
-         }
-         else{
-            int j = 1;
-            convolution(Table,Final,i,j,h);
-            if(!changes && Final[i][j] != Table[i][j]){
-               changes++;
-            }
-            j = cols_per_block;
-            convolution(Table,Final,i,j,h);
-            if(!changes && Final[i][j] != Table[i][j]){
-               changes++;
-            }
-         }
+      //First row
+      for(int j=1;j<cols_per_block+1;j++){
+         changes += convolution(Table, Final,1,j,h);
       }
+      //Last row
+      for(int j=1;j<cols_per_block+1;j++){
+         changes += convolution(Table, Final,rows_per_block,j,h);
+      }
+      //First col and last col for each middle row
+      for(int i=2;i<cols_per_block;i++){
+         changes += convolution(Table,Final,i,1,h);
+         changes += convolution(Table,Final,i,cols_per_block,h);
+      }
+
       short int ** temp;
       temp = Table;
       Table = Final;

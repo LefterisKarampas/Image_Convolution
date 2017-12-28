@@ -5,23 +5,27 @@
 #include <time.h>
 #include <math.h>
 
-#define N 2520
-#define M 1920
 
-static inline void convolution(short int **Table,short int **Final,int i,int j,float h[3][3]){
+static inline int convolution(short int **Table,short int **Final,int i,int j,float h[3][3]){
    Final[i][j] = (short int)(h[0][0] * Table[i-1][j-1]) + (short int)(h[0][1] * Table[i-1][j]) + (short int)(h[0][2]*Table[i-1][j+1]) +
       (short int)(Table[i][j-1] * h[1][0]) + (short int)(h[1][1]*Table[i][j]) + (short int)(h[1][2] * Table[i][j+1]) + 
       (short int)(h[2][0]*Table[i+1][j-1])+(short int)(h[2][1] *Table[i+1][j]) + (short int)(h[2][2] *Table[i+1][j+1]);
+   return (Final[i][j] == Table[i][j]);
 }
 
-int main(void) {
+void Usage(char *prog_name) {
+   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops>\n", prog_name);
+}  /* Usage */
+
+
+int main(int argc,char **argv) {
    srand(time(NULL));
    int comm_sz;          
    int my_rank;
    int i;
 
    //Create Filter
-   short int k[3][3] = {{0,1,0},{0,1,0},{0,0,0}};
+   short int k[3][3] = {{0,0,0},{0,1,0},{0,0,0}};
    float h[3][3];
    int sum;
    int max;
@@ -50,6 +54,44 @@ int main(void) {
    /* Get the number of processes */
    MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+
+   int N = 2520;
+   int M = 1920;
+   int max_loops = 200;
+   char * filename = NULL;
+   for(int i=1;i<argc;i+=2){
+      if (!strcmp(argv[i], "-f")){
+         filename = argv[i+1];
+      }
+      else if (!strcmp(argv[i], "-r"))
+      {
+         N = atoi(argv[i+1]);
+      }
+      else if ( !strcmp(argv[i], "-c") )
+      {
+         M = atoi(argv[i+1]);
+      }
+      else if ( !strcmp(argv[i], "-m") )
+      {
+         max_loops = atoi(argv[i+1]);
+      }
+      else{
+         if(my_rank == 0){
+            Usage(argv[0]);
+         }
+         MPI_Finalize();
+         return 0;
+      }
+   }
+
+   if(my_rank == 0){
+      fprintf(stderr,"N: %d\n",N);
+      fprintf(stderr,"M: %d\n",M);
+      fprintf(stderr,"max_loops: %d\n",max_loops);
+      if(filename != NULL){
+         fprintf(stderr,"filename: %s\n",filename);
+      }
+   }
 
    int line_div, col_div;
    double processors_sqrt = sqrt(comm_sz);
@@ -260,7 +302,7 @@ int main(void) {
    double start, finish;
 
    start = MPI_Wtime();
-   while(loop < 100){
+   while(loop < max_loops){
       changes = 0;
       loop++;
 
@@ -272,8 +314,7 @@ int main(void) {
       //Do for our table
       for(int i=2;i<rows_per_block;i++){
          for(int j=2;j<cols_per_block;j++){
-            convolution(Table, Final,i,j,h);
-            if(!changes && Final[i][j] != Table[i][j]){
+            if(convolution(Table, Final,i,j,h) && !changes){
                changes++;
             }
          }
@@ -281,28 +322,28 @@ int main(void) {
       MPI_Waitall(8, receive_request,status);
 
       //do the job for receive
-      for(int i=1;i<rows_per_block+1;i++){
-         if((i == 1) || (i == rows_per_block)){
-            for(int j=1;j<cols_per_block+1;j++){
-               convolution(Table, Final,i,j,h);
-               if(!changes && Final[i][j] != Table[i][j]){
-                  changes++;
-               }
-            }
-         }
-         else{
-            int j = 1;
-            convolution(Table,Final,i,j,h);
-            if(!changes && Final[i][j] != Table[i][j]){
-               changes++;
-            }
-            j = cols_per_block;
-            convolution(Table,Final,i,j,h);
-            if(!changes && Final[i][j] != Table[i][j]){
-               changes++;
-            }
+      //First row
+      for(int j=1;j<cols_per_block+1;j++){
+         if(convolution(Table, Final,1,j,h) && !changes){
+            changes++;
          }
       }
+      //Last row
+      for(int j=1;j<cols_per_block+1;j++){
+         if(convolution(Table, Final,rows_per_block,j,h) && !changes){
+            changes++;
+         }
+      }
+      //First col and last col for each middle row
+      for(int i=2;i<cols_per_block;i++){
+         if(convolution(Table,Final,i,1,h) && !changes){
+            changes++;
+         }
+         if(convolution(Table,Final,i,cols_per_block,h) && !changes){
+            changes++;
+         }
+      }
+
       short int ** temp;
       temp = Table;
       Table = Final;
