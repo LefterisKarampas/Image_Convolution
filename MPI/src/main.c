@@ -116,7 +116,7 @@ int main(int argc,char **argv) {
 
    //Define cols datatype
    MPI_Datatype cols_type;
-   MPI_Type_vector(rows_per_block,1,0,MPI_SHORT,&cols_type);
+   MPI_Type_vector(rows_per_block,1,cols_per_block+2,MPI_SHORT,&cols_type);
    MPI_Type_commit(&cols_type);
  
 
@@ -303,7 +303,6 @@ int main(int argc,char **argv) {
 
    start = MPI_Wtime();
    while(loop < max_loops){
-      changes = 0;
       loop++;
 
       //8x ISend
@@ -352,6 +351,7 @@ int main(int argc,char **argv) {
       //Reduce all changes
       if(loop % 10 == 0){
          MPI_Allreduce(&changes,&sum_changes, 1, MPI_SHORT, MPI_SUM, comm);
+         changes = 0;
          if(sum_changes == 0){
             if(my_rank == 0)
                printf("No changes in loop %d!\n",loop);
