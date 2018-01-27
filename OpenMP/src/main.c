@@ -341,10 +341,11 @@ int main(int argc,char **argv) {
       //First row
       int lchanges =0;
 #pragma omp parallel for num_threads(2) schedule(dynamic) reduction(+:changes) private(lchanges)
-    for(j=1;j<cols_per_block+1;j++){
+    for(int j=1;j<cols_per_block+1;j++){
          /*if(convolution(Table, Final,1,j,h) && !lchanges){
              lchanges++;
          }*/
+         int i = 1;
         Final[i][j] = (short int)(h[0][0] * Table[i-1][j-1]) + (short int)(h[0][1] * Table[i-1][j]) + (short int)(h[0][2]*Table[i-1][j+1]) +
       (short int)(Table[i][j-1] * h[1][0]) + (short int)(h[1][1]*Table[i][j]) + (short int)(h[1][2] * Table[i][j+1]) +
       (short int)(h[2][0]*Table[i+1][j-1])+(short int)(h[2][1] *Table[i+1][j]) + (short int)(h[2][2] *Table[i+1][j+1]);
