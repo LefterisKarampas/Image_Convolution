@@ -31,18 +31,18 @@ static inline int convolution(short int **Table,short int **Final,int i,int j,fl
 }
 
 void Usage(char *prog_name) {
-   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops>\n", prog_name);
+   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops> -t <threads>\n", prog_name);
 }  /* Usage */
 
 
 int main(int argc,char **argv) {
    srand(time(NULL));
-   int comm_sz;          
+   int comm_sz;
    int my_rank;
    int i;
 
    //Create Filter
-   short int k[3][3] = {{0,0,0},{0,1,0},{0,0,0}};
+   short int k[3][3] = {{1,0,0},{0,2,0},{0,0,1}};
    float h[3][3];
    int sum;
    int max;
@@ -63,15 +63,23 @@ int main(int argc,char **argv) {
          h[i][j] = k[i][j]/(float)max;
       }
    }
-   
+
 
    /* Start up MPI */
-   MPI_Init(NULL, NULL); 
+   MPI_Init(NULL, NULL);
+
+   /*int provided;
+   MPI_Init_thread(NULL,NULL,MPI_THREAD_FUNNELED,&provided);
+   if (provided!=MPI_THREAD_FUNNELED)
+   {
+     printf("Failed to initialize MPI_THREAD\n");
+     exit(-1);
+   }*/
 
    /* Get the number of processes */
    MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
-
+   int thr = 7;
    int N = 2520;
    int M = 1920;
    int max_loops = 200;
@@ -92,6 +100,10 @@ int main(int argc,char **argv) {
       {
          max_loops = atoi(argv[i+1]);
       }
+      else if (!strcmp(argv[i], "-t"))
+      {
+         thr = atoi(argv[i+1]);
+      }
       else{
          if(my_rank == 0){
             Usage(argv[0]);
@@ -102,6 +114,7 @@ int main(int argc,char **argv) {
    }
 
    if(my_rank == 0){
+      fprintf(stderr,"Threads: %d\n",thr);
       fprintf(stderr,"N: %d\n",N);
       fprintf(stderr,"M: %d\n",M);
       fprintf(stderr,"max_loops: %d\n",max_loops);
@@ -135,10 +148,10 @@ int main(int argc,char **argv) {
    MPI_Datatype cols_type;
    MPI_Type_vector(rows_per_block,1,cols_per_block+2,MPI_SHORT,&cols_type);
    MPI_Type_commit(&cols_type);
- 
+
 
    /* Get my rank among all the processes */
-   MPI_Comm_rank(MPI_COMM_WORLD, &my_rank); 
+   MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
 
    if (my_rank == 0) {
@@ -173,7 +186,7 @@ int main(int argc,char **argv) {
    MPI_Comm comm;
    int num_dims = 2;
    int reorder = 1;
-   int dim[2] = {line_div,line_div}; 
+   int dim[2] = {line_div,line_div};
    int period[2] = {0,0};
    int coord[2];
    int neigh[2];
@@ -310,70 +323,76 @@ int main(int argc,char **argv) {
    MPI_Recv_init(&Table[0][cols_per_block+1],1,MPI_SHORT,NE,tag,comm,&receive_request[5]);
    MPI_Recv_init(&Table[rows_per_block+1][0],1,MPI_SHORT,SW,tag,comm,&receive_request[6]);
    MPI_Recv_init(&Table[rows_per_block+1][cols_per_block+1],1,MPI_SHORT,SE,tag,comm,&receive_request[7]);
-  
+
 
    MPI_Status status[8];
    int loop = 0;
    int changes = 0;
-   int sum_changes;
+   //int lchanges = 0;
+   int sum_changes,j;
    double start, finish;
-
+   int lchanges=0;
+   omp_set_num_threads(thr);
    start = MPI_Wtime();
    while(loop < max_loops){
       loop++;
-
       //8x ISend
       MPI_Startall(8, send_request);
       //8x IRecv
       MPI_Startall(8, receive_request);
-      
       //Do for our table
+      if (changes>0)
+        lchanges = 1;
+  #pragma omp parallel for reduction(+:changes) private(lchanges)
+  //{
       for(int i=2;i<rows_per_block;i++){
-         for(int j=2;j<cols_per_block;j++){
-            if(convolution(Table, Final,i,j,h) && !changes){
-               changes++;
+     //#pragma omp for schedule(dynamic) reduction(+:changes) private(lchanges)
+  	for(int j=2;j<cols_per_block;j++){
+          if(convolution(Table, Final,i,j,h) && !lchanges){
+               lchanges++;
+               changes+=lchanges;
             }
          }
       }
+  //}
       MPI_Waitall(8, receive_request,status);
-
       //do the job for receive
       //First row
-      int lchanges =0;
-#pragma omp parallel for num_threads(2) schedule(dynamic) reduction(+:changes) private(lchanges)
-    for(int j=1;j<cols_per_block+1;j++){
-         /*if(convolution(Table, Final,1,j,h) && !lchanges){
-             lchanges++;
-         }*/
-         int i = 1;
-        Final[i][j] = (short int)(h[0][0] * Table[i-1][j-1]) + (short int)(h[0][1] * Table[i-1][j]) + (short int)(h[0][2]*Table[i-1][j+1]) +
-      (short int)(Table[i][j-1] * h[1][0]) + (short int)(h[1][1]*Table[i][j]) + (short int)(h[1][2] * Table[i][j+1]) +
-      (short int)(h[2][0]*Table[i+1][j-1])+(short int)(h[2][1] *Table[i+1][j]) + (short int)(h[2][2] *Table[i+1][j+1]);
-        if (Final[i][j] == Table[i][j] && !lchanges){
-                lchanges++;
-                changes+=lchanges;
-      }
+   if (changes>0)
+        lchanges = 1;
+  #pragma omp parallel for schedule(dynamic) reduction(+:changes) private(lchanges)
+    for(j=1;j<cols_per_block+1;j++){
+	//printf("thread %d and j %d\n",omp_get_thread_num(),j);
+         if(convolution(Table, Final,1,j,h) && !lchanges){
+	     lchanges++;
+             changes+=lchanges;
+         }
     }
-      //#pragma omp atomic
-        //changes+=lchanges;
-  //#pragma omp for
-
+    if (changes>0)
+	lchanges = 1;
+  #pragma omp parallel for schedule(dynamic) reduction(+:changes) private(lchanges)
       //Last row
       for(int j=1;j<cols_per_block+1;j++){
-         if(convolution(Table, Final,rows_per_block,j,h) && !changes){
-            changes++;
+         if(convolution(Table, Final,rows_per_block,j,h) && !lchanges){
+            lchanges++;
+            changes+=lchanges;
          }
       }
+    if (changes>0)
+        lchanges = 1;
+  #pragma omp parallel for schedule(dynamic) reduction(+:changes) private(lchanges)
       //First col and last col for each middle row
-      for(int i=2;i<cols_per_block;i++){
-         if(convolution(Table,Final,i,1,h) && !changes){
-            changes++;
+      for(int j=2;j<cols_per_block;j++){
+         if(convolution(Table,Final,j,1,h) && !lchanges){
+            lchanges++;
+            changes+=lchanges;
          }
-         if(convolution(Table,Final,i,cols_per_block,h) && !changes){
-            changes++;
-         }
-      }
 
+        if (convolution(Table,Final,j,cols_per_block,h) && !lchanges){
+                lchanges++;
+                changes+=lchanges;
+        }
+     }
       short int ** temp;
       temp = Table;
       Table = Final;
@@ -382,11 +401,12 @@ int main(int argc,char **argv) {
       //Reduce all changes
       if(loop % 10 == 0){
          MPI_Allreduce(&changes,&sum_changes, 1, MPI_SHORT, MPI_SUM, comm);
-         changes = 0;
+         changes = lchanges = 0;
          if(sum_changes == 0){
             if(my_rank == 0)
-               printf("No changes in loop %d!\n",loop);
-            break;
+              printf("No changes in loop %d!\n",loop);
+           // break;
+            //loop = max_loops;
          }
          /*else if(loop > 100){
             h[0][1] = 0;
@@ -409,7 +429,7 @@ int main(int argc,char **argv) {
    }
    free(Table);
    free(Final);
-   MPI_Finalize(); 
+   MPI_Finalize();
 
    return 0;
 }  /* main */
