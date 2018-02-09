@@ -10,28 +10,16 @@
 #include <omp.h>
 #endif
 
-/*#ifdef _OPENMP
-   int my_rank = omp_get_thread_num ( );
-   int thread_count = omp_get_num_threads ( );
-#else
-   int my_rank = 0;
-   int thread_count = 1;
-#endif*/
 
-/*#pragma omp critical
-global_result += my_result ;
-*/
-
-
-static inline int convolution(short int **Table,short int **Final,int i,int j,float h[3][3]){
-   Final[i][j] = (short int)(h[0][0] * Table[i-1][j-1]) + (short int)(h[0][1] * Table[i-1][j]) + (short int)(h[0][2]*Table[i-1][j+1]) +
-      (short int)(Table[i][j-1] * h[1][0]) + (short int)(h[1][1]*Table[i][j]) + (short int)(h[1][2] * Table[i][j+1]) + 
-      (short int)(h[2][0]*Table[i+1][j-1])+(short int)(h[2][1] *Table[i+1][j]) + (short int)(h[2][2] *Table[i+1][j+1]);
+static inline int convolution(short int **Table,short int **Final,int i,int j,float h[3][3],int num_elements){
+   Final[i][j] = (short int)(h[0][0] * Table[i-1][j-num_elements]) + (short int)(h[0][1] * Table[i-1][j]) + (short int)(h[0][2]*Table[i-1][j+num_elements]) +
+      (short int)(Table[i][j-num_elements] * h[1][0]) + (short int)(h[1][1]*Table[i][j]) + (short int)(h[1][2] * Table[i][j+num_elements]) + 
+      (short int)(h[2][0]*Table[i+1][j-num_elements])+(short int)(h[2][1] *Table[i+1][j]) + (short int)(h[2][2] *Table[i+1][j+num_elements]);
    return (Final[i][j] == Table[i][j]);
 }
 
 void Usage(char *prog_name) {
-   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops> -t <threads>\n", prog_name);
+   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops> -rgb -t <threads>\n", prog_name);
 }  /* Usage */
 
 
@@ -68,14 +56,6 @@ int main(int argc,char **argv) {
    /* Start up MPI */
    MPI_Init(NULL, NULL);
 
-   /*int provided;
-   MPI_Init_thread(NULL,NULL,MPI_THREAD_FUNNELED,&provided);
-   if (provided!=MPI_THREAD_FUNNELED)
-   {
-     printf("Failed to initialize MPI_THREAD\n");
-     exit(-1);
-   }*/
-
    /* Get the number of processes */
    MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
@@ -84,7 +64,9 @@ int main(int argc,char **argv) {
    int M = 1920;
    int max_loops = 200;
    char * filename = NULL;
-   for(int i=1;i<argc;i+=2){
+   int num_elements = 1;
+   i = 1;
+   while(i<argc){
       if (!strcmp(argv[i], "-f")){
          filename = argv[i+1];
       }
@@ -104,6 +86,10 @@ int main(int argc,char **argv) {
       {
          thr = atoi(argv[i+1]);
       }
+     else if (!strcmp(argv[i], "-rgb")){
+         num_elements = 3;
+         i--;
+     }
       else{
          if(my_rank == 0){
             Usage(argv[0]);
@@ -111,6 +97,7 @@ int main(int argc,char **argv) {
          MPI_Finalize();
          return 0;
       }
+      i+=2;
    }
 
    if(my_rank == 0){
@@ -146,7 +133,7 @@ int main(int argc,char **argv) {
 
    //Define cols datatype
    MPI_Datatype cols_type;
-   MPI_Type_vector(rows_per_block,1,cols_per_block+2,MPI_SHORT,&cols_type);
+   MPI_Type_vector(rows_per_block,num_elements,(cols_per_block+2)*num_elements,MPI_SHORT,&cols_type);
    MPI_Type_commit(&cols_type);
 
 
@@ -167,15 +154,15 @@ int main(int argc,char **argv) {
    short int ** Table = (short int **)malloc(sizeof(short int *)*(rows_per_block+2)); 
    short int ** Final = (short int **)malloc(sizeof(short int *)*(rows_per_block+2));
    for(int i=0;i<rows_per_block+2;i++){
-      Table[i] = (short int *)malloc(sizeof(short int)*(cols_per_block+2));
-      Final[i] = (short int *)malloc(sizeof(short int)*(cols_per_block+2));
+      Table[i] = (short int *)malloc(sizeof(short int)*(cols_per_block+2)*num_elements);
+      Final[i] = (short int *)malloc(sizeof(short int)*(cols_per_block+2)*num_elements);
       if((i == 0) || (i == (rows_per_block+1))){
-         /*for(int j=0;j<cols_per_block+2;j++){
-            Table[i][j] = 255;
-         }*/
-         continue;
+       for(int j=0;j<(cols_per_block+2)*num_elements;j++){
+          Table[i][j] = 255;
+       }
+       continue;
       }
-      for(int j=1;j<cols_per_block+1;j++){
+      for(int j=1;j<(cols_per_block+1)*num_elements;j++){
          Table[i][j] = rand() % 256;
       }
    }
@@ -300,29 +287,29 @@ int main(int argc,char **argv) {
    MPI_Request send_request[8];
    int tag = 11;
    //rows
-   MPI_Send_init(&Table[1][1],cols_per_block, MPI_SHORT, North, tag, comm, &send_request[0]);
-   MPI_Send_init(&Table[rows_per_block][1],cols_per_block, MPI_SHORT,South,tag, comm, &send_request[1]);
+   MPI_Send_init(&Table[1][num_elements],cols_per_block*num_elements, MPI_SHORT, North, tag, comm, &send_request[0]);
+   MPI_Send_init(&Table[rows_per_block][num_elements],cols_per_block*num_elements, MPI_SHORT,South,tag, comm, &send_request[1]);
    //cols
-   MPI_Send_init(&Table[1][1],1,cols_type,West,tag,comm,&send_request[2]);
-   MPI_Send_init(&Table[1][cols_per_block],1,cols_type,East,tag,comm,&send_request[3]);
+   MPI_Send_init(&Table[1][num_elements],1,cols_type,West,tag,comm,&send_request[2]);
+   MPI_Send_init(&Table[1][cols_per_block*num_elements],1,cols_type,East,tag,comm,&send_request[3]);
    //corners
-   MPI_Send_init(&Table[1][1],1, MPI_SHORT,NW, tag, comm, &send_request[4]);
-   MPI_Send_init(&Table[1][cols_per_block],1,MPI_SHORT,NE,tag,comm,&send_request[5]);
-   MPI_Send_init(&Table[rows_per_block][1],1,MPI_SHORT,SW,tag,comm,&send_request[6]);
-   MPI_Send_init(&Table[rows_per_block][cols_per_block],1,MPI_SHORT,SE,tag, comm, &send_request[7]);
+   MPI_Send_init(&Table[1][num_elements],num_elements, MPI_SHORT,NW, tag, comm, &send_request[4]);
+   MPI_Send_init(&Table[1][cols_per_block*num_elements],num_elements,MPI_SHORT,NE,tag,comm,&send_request[5]);
+   MPI_Send_init(&Table[rows_per_block][num_elements],num_elements,MPI_SHORT,SW,tag,comm,&send_request[6]);
+   MPI_Send_init(&Table[rows_per_block][cols_per_block*num_elements],num_elements,MPI_SHORT,SE,tag, comm, &send_request[7]);
 
    MPI_Request receive_request[8];
    //rows
-   MPI_Recv_init(&Table[0][1],cols_per_block, MPI_SHORT, North, tag, comm, &receive_request[0]);
-   MPI_Recv_init(&Table[rows_per_block+1][1], cols_per_block, MPI_SHORT, South, tag, comm, &receive_request[1]);
+   MPI_Recv_init(&Table[0][num_elements],cols_per_block*num_elements, MPI_SHORT, North, tag, comm, &receive_request[0]);
+   MPI_Recv_init(&Table[rows_per_block+1][num_elements], cols_per_block*num_elements, MPI_SHORT, South, tag, comm, &receive_request[1]);
    //cols
    MPI_Recv_init(&Table[1][0],1, cols_type, West, tag, comm, &receive_request[2]);
-   MPI_Recv_init(&Table[1][cols_per_block+1], 1, cols_type, East, tag, comm, &receive_request[3]);
+   MPI_Recv_init(&Table[1][(cols_per_block+1)*num_elements],1, cols_type, East, tag, comm, &receive_request[3]);
    //corners
-   MPI_Recv_init(&Table[0][0],1,MPI_SHORT,NW,tag,comm,&receive_request[4]);
-   MPI_Recv_init(&Table[0][cols_per_block+1],1,MPI_SHORT,NE,tag,comm,&receive_request[5]);
-   MPI_Recv_init(&Table[rows_per_block+1][0],1,MPI_SHORT,SW,tag,comm,&receive_request[6]);
-   MPI_Recv_init(&Table[rows_per_block+1][cols_per_block+1],1,MPI_SHORT,SE,tag,comm,&receive_request[7]);
+   MPI_Recv_init(&Table[0][0],num_elements,MPI_SHORT,NW,tag,comm,&receive_request[4]);
+   MPI_Recv_init(&Table[0][(cols_per_block+1)*num_elements],num_elements,MPI_SHORT,NE,tag,comm,&receive_request[5]);
+   MPI_Recv_init(&Table[rows_per_block+1][0],num_elements,MPI_SHORT,SW,tag,comm,&receive_request[6]);
+   MPI_Recv_init(&Table[rows_per_block+1][(cols_per_block+1)*num_elements],num_elements,MPI_SHORT,SE,tag,comm,&receive_request[7]);
 
 
    MPI_Status status[8];
@@ -347,8 +334,8 @@ int main(int argc,char **argv) {
   //{
       for(int i=2;i<rows_per_block;i++){
      //#pragma omp for schedule(dynamic) reduction(+:changes) private(lchanges)
-  	for(int j=2;j<cols_per_block;j++){
-          if(convolution(Table, Final,i,j,h) && !lchanges){
+  	for(int j=2*num_elements;j<cols_per_block*num_elements;j++){
+          if(convolution(Table, Final,i,j,h,num_elements) && !lchanges){
                lchanges++;
                changes+=lchanges;
             }
@@ -361,19 +348,19 @@ int main(int argc,char **argv) {
    if (changes>0)
         lchanges = 1;
   #pragma omp parallel for schedule(dynamic) reduction(+:changes) private(lchanges)
-    for(j=1;j<cols_per_block+1;j++){
+    for(j=num_elements;j<(cols_per_block+1)*num_elements;j++){
 	//printf("thread %d and j %d\n",omp_get_thread_num(),j);
-         if(convolution(Table, Final,1,j,h) && !lchanges){
-	     lchanges++;
-             changes+=lchanges;
+         if(convolution(Table, Final,1,j,h,num_elements) && !lchanges){
+	         lchanges++;
+            changes+=lchanges;
          }
     }
     if (changes>0)
 	lchanges = 1;
   #pragma omp parallel for schedule(dynamic) reduction(+:changes) private(lchanges)
       //Last row
-      for(int j=1;j<cols_per_block+1;j++){
-         if(convolution(Table, Final,rows_per_block,j,h) && !lchanges){
+      for(int j=num_elements;j<(cols_per_block+1)*num_elements;j++){
+         if(convolution(Table, Final,rows_per_block,j,h,num_elements) && !lchanges){
             lchanges++;
             changes+=lchanges;
          }
@@ -382,16 +369,18 @@ int main(int argc,char **argv) {
         lchanges = 1;
   #pragma omp parallel for schedule(dynamic) reduction(+:changes) private(lchanges)
       //First col and last col for each middle row
-      for(int j=2;j<cols_per_block;j++){
-         if(convolution(Table,Final,j,1,h) && !lchanges){
-            lchanges++;
-            changes+=lchanges;
-         }
+      for(int j=2;j<rows_per_block;j++){
+         for(int k=0;k<num_elements;k++){
+            if(convolution(Table,Final,j,num_elements+k,h,num_elements) && !lchanges){
+               lchanges++;
+               changes+=lchanges;
+            }
 
-        if (convolution(Table,Final,j,cols_per_block,h) && !lchanges){
-                lchanges++;
-                changes+=lchanges;
-        }
+           if (convolution(Table,Final,j,cols_per_block*num_elements+k,h,num_elements) && !lchanges){
+                   lchanges++;
+                   changes+=lchanges;
+           }
+         }
      }
       short int ** temp;
       temp = Table;
