@@ -1,142 +1,174 @@
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
-#include <unistd.h>
+#include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <cuda.h>
+#include <time.h>
 
+#define FRACTION_CEILING(numerator, denominator) ((numerator+denominator-1)/denominator)
+#define BLOCK_SIZE  24
 
-#define FRACTION_CEILING(numerator, denominator) ((numerator+denominator-1)/(denominator))
-
-
-__global__ void convolution(int *in,int *out,float *h,int N,int num_elements){
-	int index = threadIdx.x + blockDim.x * blockIdx.x;
-	if((threadIdx.x == 0) || (threadIdx.x == blockDim.x -1) || (blockIdx.x == 0) || (blockIdx.x == N-1)){
-		out[index] = 255;
-	}
-	else{
-		int North = index - blockDim.x;
-		int South = index + blockDim.x;
-		int East = index +num_elements;
-		int West = index -num_elements;
-		int NE = North +num_elements;
-		int NW = North -num_elements;
-		int SE = South +num_elements;
-		int SW = South -num_elements;
-		out[index] = in[North]*h[1] + in[South]*h[7] + in[East]*h[5] + in[West]*h[3] + in[index]*h[4]+
-			in[NE]*h[2]+in[NW]*h[0] + in[SE]*h[8]+in[SW]*h[6];
-
-		if(out[index] > 255){
-			out[index] = 255;
-		}
-		else if(out[index] < 0){
-			out[index] = 0;
-		}
-	}
-	__syncthreads();
-}
+__global__ void convolution(unsigned char *in_image, unsigned char *out_image, int height, int width, int *cfilter);
 
 
 void Usage(char *prog_name) {
-   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops> -rgb\n", prog_name);
-} 
-
-int main(int argc,char **argv){
-
-	int i = 1;
-	int N = 2048;
-	int M = 1024;
-	int max_loops = 200;
-	int num_elements = 1;
-	char * filename;
-	while(i<argc){
-		if (!strcmp(argv[i], "-f")){
-			filename = argv[i+1];
-		}
-		else if (!strcmp(argv[i], "-r"))
-		{
-			N = atoi(argv[i+1]);
-		}
-		else if ( !strcmp(argv[i], "-c") )
-		{
-			M = atoi(argv[i+1]);
-		}
-		else if ( !strcmp(argv[i], "-m") )
-		{
-			max_loops = atoi(argv[i+1]);
-		}
-		else if (!strcmp(argv[i], "-rgb")){
-			num_elements = 3;
-			i--;
-		}
-		else{
-			Usage(argv[0]);
-			return 0;
-		}
-		i+=2;
-   	}	
-
+   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops> -rgb \n", prog_name);
+}
+ 
+int main(int argc, char **argv) {
 	srand(time(NULL));
-	float h[9] = {0,1,3,0,1,0,0,0,0};
-	int size = N*M*sizeof(int)*num_elements;
-	int *Image = (int *)malloc(size);
-	int *Out = (int *)malloc(size);
-	int *out;
-	int *in;
-	float *h_d;
+	int i, j, n, is_RGB, filter[9] = {1, 2, 1, 2, 4, 2, 1, 2, 1}, *cfilter;
+	unsigned int width, height;
 	float elapsed_time;
-	cudaEvent_t start, stop;
+	char *input_path, *output_path;
+	unsigned char *Grey_image_array, **RGB_image_array, *tempGrey, **tempRGB, *in_image, *out_image;
+	cudaEvent_t start, stop;	
 
+	n = 200;
+	i = 1;
+	height = 2520;
+    width = 1920;
+    is_RGB = 0;
+	while(i < argc){
+      if (!strcmp(argv[i], "-f")){
+         input_path = argv[i+1];
+      }
+      else if (!strcmp(argv[i], "-r"))
+      {
+         height = atoi(argv[i+1]);
+      }
+      else if ( !strcmp(argv[i], "-c") )
+      {
+         width = atoi(argv[i+1]);
+      }
+      else if ( !strcmp(argv[i], "-m") )
+      {
+         n = atoi(argv[i+1]);
+      }
+     else if (!strcmp(argv[i], "-rgb")){
+     	is_RGB = 1;
+         i--;
+     }
+      else{
+         Usage(argv[0]);
+         return 0;
+      }
+      i+=2;
+   }
 
-	dim3 NumberOfThreads(M*num_elements);
-	dim3 NumberOfBlocks(N);
-
-	cudaMalloc((void **)&in,size);
-	cudaMalloc((void **)&out,size);
-	cudaMalloc((void**)&h_d,9*sizeof(float));
-
-	for(int i=0;i<N*M*num_elements;i++){
-		Image[i] = rand() % 256;
+   	if(!is_RGB){
+		Grey_image_array = (unsigned char*) malloc(height * width * sizeof(unsigned char));
+		for(i=0;i<height*width;i++){
+			Grey_image_array[i] = (unsigned char)rand()%256;
+		}
 	}
+	else{
+		RGB_image_array = (unsigned char**) malloc(3 * sizeof(unsigned char*));
+		for(i=0;i<3;i++){
+			RGB_image_array[i] = (unsigned char*) malloc(height * width * sizeof(unsigned char));
+		}
+		for (i = 0; i < height * width * 3; i++){
+			RGB_image_array[i % 3][i / 3] = (unsigned char)rand()%256;
+		}
+	}
+	
+	dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE,1);
+	dim3 dimGrid(FRACTION_CEILING(width, BLOCK_SIZE),FRACTION_CEILING(height, BLOCK_SIZE),1);
 
-	cudaMemcpy(h_d,h,9*sizeof(float),cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&in_image, height * width * sizeof(unsigned char));
+	cudaMalloc((void**)&out_image, height * width * sizeof(unsigned char));
+	cudaMalloc((void**)&cfilter, 9 * sizeof(int));
 
+	cudaMemcpy(cfilter, filter, 9 * sizeof(int), cudaMemcpyHostToDevice);
+	
+	//time starts
 	cudaEventCreate(&start);
 	cudaEventRecord(start,0);
-
-	int loop = 0;
-	do{
-		if(loop % 2 == 0){
-			cudaMemcpy(in,Image,size,cudaMemcpyHostToDevice);
-			convolution<<<NumberOfBlocks,NumberOfThreads>>>(in,out,h_d,N,num_elements);
-			cudaMemcpy(Out,out,size,cudaMemcpyDeviceToHost);
+	
+	
+	if(!is_RGB){
+		cudaMalloc((void**)&tempGrey, height * width * sizeof(unsigned char));
+		cudaMemcpy(in_image, Grey_image_array, height * width * sizeof(unsigned char), cudaMemcpyHostToDevice);
+		for(i = 0; i < n; i++){
+			convolution<<<dimGrid,dimBlock>>>(in_image, out_image, height, width, cfilter);
+			cudaThreadSynchronize();
+			tempGrey = in_image;
+			in_image = out_image;
+			out_image = tempGrey;
 		}
-		else{
-			cudaMemcpy(in,Out,size,cudaMemcpyHostToDevice);	
-			convolution<<<NumberOfBlocks,NumberOfThreads>>>(in,out,h_d,N,num_elements);
-			cudaMemcpy(Image,out,size,cudaMemcpyDeviceToHost);
+		cudaMemcpy(Grey_image_array, out_image, height * width * sizeof(unsigned char), cudaMemcpyDeviceToHost);
+		cudaFree(tempGrey);
+	}else{
+		tempRGB = (unsigned char**)malloc(3 * sizeof(unsigned char*));
+		for(i = 0; i < 3; i++)
+			cudaMalloc((void**)&tempRGB[i], height * width * sizeof(unsigned char));
+		for(i = 0; i < 3; i++){
+			cudaMemcpy(in_image, RGB_image_array[i], height * width * sizeof(unsigned char), cudaMemcpyHostToDevice);
+			for(j = 0; j < n; j++){
+				convolution<<<dimGrid,dimBlock>>>(in_image, out_image, height, width, cfilter);
+				cudaThreadSynchronize();
+				tempRGB[i] = in_image;
+				in_image = out_image;
+				out_image = tempRGB[i];
+			}
+			cudaMemcpy(RGB_image_array[i], out_image, height * width * sizeof(unsigned char), cudaMemcpyDeviceToHost);
 		}
-		loop++;
-	}while(loop < max_loops && memcmp(Image,Out,size) != 0);
+		for(i = 0; i < 3; i++)
+			cudaFree(tempRGB[i]);
+		free(tempRGB);
+	}
 
-	/*for(int i=0;i<size;i++){
-		printf("%d - %d\n",Image[i],Out[i]);
-	}*/
+	//time finishes
 	cudaEventCreate(&stop);
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	
 	cudaEventElapsedTime(&elapsed_time, start, stop);
-
+	
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
+	
+	printf("Finished after %f sec\n", elapsed_time/1000);
+	
 
-	printf("Time %f sec with loop %d\n",elapsed_time/1000,loop);
-	free(Image);
-	free(Out);
-	cudaFree(h_d);
-	cudaFree(out);
-	cudaFree(in);
-	return 0;
+	cudaFree(in_image);
+	cudaFree(out_image);
+	cudaFree(cfilter);
+
+	//bye
+	exit(EXIT_SUCCESS);
+}
+
+
+
+/*
+ * Function for gpu which apply the filter
+ */
+__global__ void convolution(unsigned char *in_image, unsigned char *out_image, int height, int width, int *cfilter ) {
+	
+	const unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
+	const unsigned int y = blockDim.y * blockIdx.y + threadIdx.y;
+
+	if (y >= height || x >= width){
+    	   return;
+	}
+    	
+
+	int i, j, s = 1, y_idx, x_idx, sum = 0;
+
+	for (i = -s; i <= s; i++) {
+		for ( j = -s; j <= s; j++) {
+			y_idx = y + i;
+			x_idx = x + j;
+			if (y_idx >= height || y_idx < 0 || x_idx >= width || x_idx < 0) {
+				y_idx = y;
+				x_idx = x;
+			}
+			sum += in_image[width*(y_idx)+(x_idx)] * cfilter[3*(i+1)+(j+1)];
+		}	
+	}
+
+	out_image[width*y+x] =(unsigned char)((float)sum/16);	
 }

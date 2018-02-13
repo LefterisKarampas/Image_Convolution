@@ -6,17 +6,15 @@
 #include <math.h>
 
 
-
-static inline int convolution(short int **Table,short int **Final,int i,int j,float h[3][3],int num_elements){
-   Final[i][j] = (short int)(h[0][0] * Table[i-1][j-num_elements]) + (short int)(h[0][1] * Table[i-1][j]) + (short int)(h[0][2]*Table[i-1][j+num_elements]) +
-      (short int)(Table[i][j-num_elements] * h[1][0]) + (short int)(h[1][1]*Table[i][j]) + (short int)(h[1][2] * Table[i][j+num_elements]) + 
-      (short int)(h[2][0]*Table[i+1][j-num_elements])+(short int)(h[2][1] *Table[i+1][j]) + (short int)(h[2][2] *Table[i+1][j+num_elements]);
+static inline int convolution(unsigned char **Table,unsigned char **Final,int i,int j,float h[3][3],int num_elements){
+   Final[i][j] = h[0][0] * Table[i-1][j-num_elements] + h[0][1] * Table[i-1][j] + h[0][2]*Table[i-1][j+num_elements] +
+     Table[i][j-num_elements] * h[1][0] + (h[1][1]*Table[i][j]) + (h[1][2] * Table[i][j+num_elements]) + 
+      (h[2][0]*Table[i+1][j-num_elements])+(h[2][1] *Table[i+1][j]) + (h[2][2] *Table[i+1][j+num_elements]);
    return (Final[i][j] == Table[i][j]);
 }
 
-
 void Usage(char *prog_name) {
-   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops> -rgb\n", prog_name);
+   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops>\n", prog_name);
 }  /* Usage */
 
 
@@ -27,7 +25,7 @@ int main(int argc,char **argv) {
    int i;
 
    //Create Filter
-   short int k[3][3] = {{0,0,0},{0,1,0},{0,0,0}};
+   unsigned char k[3][3] = {{0,0,0},{0,1,0},{0,0,0}};
    float h[3][3];
    int sum;
    int max;
@@ -59,37 +57,43 @@ int main(int argc,char **argv) {
 
    int N = 2520;
    int M = 1920;
-   int rgb = 0;
    int max_loops = 200;
    char * filename = NULL;
    int num_elements = 1;
    i=1;
-	while(i<argc){
-		if (!strcmp(argv[i], "-f")){
-			filename = argv[i+1];
-		}
-		else if (!strcmp(argv[i], "-r")){
-			N = atoi(argv[i+1]);
-		}
-		else if ( !strcmp(argv[i], "-c") ){
-			M = atoi(argv[i+1]);
-		}
-		else if ( !strcmp(argv[i], "-m") ){
-			max_loops = atoi(argv[i+1]);
-		}
-		else if ( !strcmp(argv[i], "-rgb") ){
-			num_elements = 3;
-			i--;
-		}
-		else{
-			if(my_rank == 0){
-				Usage(argv[0]);
-			}
-			MPI_Finalize();
-			return 0;
-		}
-		i+=2;
-	}
+   while(i<argc){
+      if (!strcmp(argv[i], "-f")){
+         filename = argv[i+1];
+      }
+      else if (!strcmp(argv[i], "-r"))
+      {
+         N = atoi(argv[i+1]);
+      }
+      else if ( !strcmp(argv[i], "-c") )
+      {
+         M = atoi(argv[i+1]);
+      }
+      else if ( !strcmp(argv[i], "-m") )
+      {
+         max_loops = atoi(argv[i+1]);
+      }
+      else if ( !strcmp(argv[i], "-rgb") )
+      {
+         num_elements = 3;
+         if(my_rank == 0){
+            printf("num_elements %d\n",num_elements);
+         }
+         i--;
+      }
+      else{
+         if(my_rank == 0){
+            Usage(argv[0]);
+         }
+         MPI_Finalize();
+         return 0;
+      }
+      i+=2;
+   }
 
    if(my_rank == 0){
       fprintf(stderr,"N: %d\n",N);
@@ -102,8 +106,6 @@ int main(int argc,char **argv) {
 
    int line_div, col_div;
    double processors_sqrt = sqrt(comm_sz);
-   double div;
-   int last_div_ok;
 
    if(processors_sqrt == floor(processors_sqrt)){
       line_div = processors_sqrt;
@@ -122,9 +124,8 @@ int main(int argc,char **argv) {
    int blocks_per_col = M / cols_per_block;
 
    //Define cols datatype
-   
    MPI_Datatype cols_type;
-   MPI_Type_vector(rows_per_block,num_elements,(cols_per_block+2)*num_elements,MPI_SHORT,&cols_type);
+   MPI_Type_vector(rows_per_block,num_elements,(cols_per_block+2)*num_elements,MPI_CHAR,&cols_type);
    MPI_Type_commit(&cols_type);
  
 
@@ -136,11 +137,28 @@ int main(int argc,char **argv) {
       printf("line div : %d\n", line_div);
       printf("col div : %d\n", col_div);
       printf("rows_per_block: %d\n", rows_per_block);
-      printf("cols_per_block: %d\n", cols_per_block);
+      printf("cols_per_block: %d\n", cols_per_block*num_elements);
       printf("blocks_per_row: %d\n",blocks_per_row);
       printf("blocks_per_col: %d\n",blocks_per_col);
-      printf("num_elements: %d\n",num_elements);
+
    }
+
+   unsigned char ** Table = (unsigned char **)malloc(sizeof(unsigned char *)*(rows_per_block+2)); 
+   unsigned char ** Final = (unsigned char **)malloc(sizeof(unsigned char *)*(rows_per_block+2));
+   for(int i=0;i<rows_per_block+2;i++){
+      Table[i] = (unsigned char *)malloc(sizeof(unsigned char)*(cols_per_block+2)*num_elements);
+      Final[i] = (unsigned char *)malloc(sizeof(unsigned char)*(cols_per_block+2)*num_elements);
+      if((i == 0) || (i == (rows_per_block+1))){
+         /*for(int j=0;j<cols_per_block+2;j++){
+            Table[i][j] = 255;
+         }*/
+         continue;
+      }
+      for(int j=num_elements;j<(cols_per_block+1)*num_elements;j++){
+         Table[i][j] = rand() % 256;
+      }
+   }
+
 
    //Neighbors
 
@@ -251,52 +269,39 @@ int main(int argc,char **argv) {
    else{
       MPI_Cart_rank(comm, neigh, &SW);
    }
-
-
-  
-	short int ** Table = (short int **)malloc(sizeof(short int *)*(rows_per_block+2)); 
-	short int ** Final = (short int **)malloc(sizeof(short int *)*(rows_per_block+2));
-	for(int i=0;i<rows_per_block+2;i++){
-		Table[i] = (short int *)malloc(sizeof(short int)*(cols_per_block+2)*num_elements);
-		Final[i] = (short int *)malloc(sizeof(short int)*(cols_per_block+2)*num_elements);
-		if((i == 0) || (i == (rows_per_block+1))){
-		 for(int j=0;j<(cols_per_block+2)*num_elements;j++){
-		    Table[i][j] = 255;
-		 }
-		 continue;
-		}
-		for(int j=1;j<(cols_per_block+1)*num_elements;j++){
-			Table[i][j] = rand() % 256;
-		}
-	}
+   /*
+   printf("Rank: %d -> (%d,%d)\n \tNorth: %d, South: %d, West: %d, East: %d\n\t\
+       North West: %d, North East: %d, South West: %d, South East: %d\n",
+      my_rank,coord[0],coord[1],North,South,West,East,NW,NE,SW,SE);
+   */
 
    //Create messages
    MPI_Request send_request[8];
    int tag = 11;
    //rows
-   MPI_Send_init(&Table[1][num_elements],cols_per_block*num_elements, MPI_SHORT, North, tag, comm, &send_request[0]);
-   MPI_Send_init(&Table[rows_per_block][num_elements],cols_per_block*num_elements, MPI_SHORT,South,tag, comm, &send_request[1]);
+   MPI_Send_init(&(Table[1][num_elements]),cols_per_block*num_elements, MPI_CHAR, North, tag, comm, &send_request[0]);
+   MPI_Send_init(&(Table[rows_per_block][num_elements]),cols_per_block*num_elements, MPI_CHAR,South,tag, comm, &send_request[1]);
    //cols
-   MPI_Send_init(&Table[1][num_elements],1,cols_type,West,tag,comm,&send_request[2]);
-   MPI_Send_init(&Table[1][cols_per_block*num_elements],1,cols_type,East,tag,comm,&send_request[3]);
+   MPI_Send_init(&(Table[1][num_elements]),1,cols_type,West,tag,comm,&send_request[2]);
+   MPI_Send_init(&(Table[1][cols_per_block*num_elements]),1,cols_type,East,tag,comm,&send_request[3]);
    //corners
-   MPI_Send_init(&Table[1][num_elements],num_elements, MPI_SHORT,NW, tag, comm, &send_request[4]);
-   MPI_Send_init(&Table[1][cols_per_block*num_elements],num_elements,MPI_SHORT,NE,tag,comm,&send_request[5]);
-   MPI_Send_init(&Table[rows_per_block][num_elements],num_elements,MPI_SHORT,SW,tag,comm,&send_request[6]);
-   MPI_Send_init(&Table[rows_per_block][cols_per_block*num_elements],num_elements,MPI_SHORT,SE,tag, comm, &send_request[7]);
+   MPI_Send_init(&(Table[1][num_elements]),num_elements, MPI_CHAR,NW, tag, comm, &send_request[4]);
+   MPI_Send_init(&(Table[1][cols_per_block*num_elements]),num_elements,MPI_CHAR,NE,tag,comm,&send_request[5]);
+   MPI_Send_init(&(Table[rows_per_block][num_elements]),num_elements,MPI_CHAR,SW,tag,comm,&send_request[6]);
+   MPI_Send_init(&(Table[rows_per_block][cols_per_block*num_elements]),num_elements,MPI_CHAR,SE,tag, comm, &send_request[7]);
 
    MPI_Request receive_request[8];
    //rows
-   MPI_Recv_init(&Table[0][num_elements],cols_per_block*num_elements, MPI_SHORT, North, tag, comm, &receive_request[0]);
-   MPI_Recv_init(&Table[rows_per_block+1][num_elements], cols_per_block*num_elements, MPI_SHORT, South, tag, comm, &receive_request[1]);
+   MPI_Recv_init(&(Table[0][num_elements]),cols_per_block*num_elements, MPI_CHAR, North, tag, comm, &receive_request[0]);
+   MPI_Recv_init(&(Table[rows_per_block+1][num_elements]), cols_per_block*num_elements, MPI_CHAR, South, tag, comm, &receive_request[1]);
    //cols
-   MPI_Recv_init(&Table[1][0],1, cols_type, West, tag, comm, &receive_request[2]);
-   MPI_Recv_init(&Table[1][(cols_per_block+1)*num_elements],1, cols_type, East, tag, comm, &receive_request[3]);
+   MPI_Recv_init(&(Table[1][0]),1, cols_type, West, tag, comm, &receive_request[2]);
+   MPI_Recv_init(&(Table[1][(cols_per_block+1)*num_elements]), 1, cols_type, East, tag, comm, &receive_request[3]);
    //corners
-   MPI_Recv_init(&Table[0][0],num_elements,MPI_SHORT,NW,tag,comm,&receive_request[4]);
-   MPI_Recv_init(&Table[0][(cols_per_block+1)*num_elements],num_elements,MPI_SHORT,NE,tag,comm,&receive_request[5]);
-   MPI_Recv_init(&Table[rows_per_block+1][0],num_elements,MPI_SHORT,SW,tag,comm,&receive_request[6]);
-   MPI_Recv_init(&Table[rows_per_block+1][(cols_per_block+1)*num_elements],num_elements,MPI_SHORT,SE,tag,comm,&receive_request[7]);
+   MPI_Recv_init(&(Table[0][0]),num_elements,MPI_CHAR,NW,tag,comm,&receive_request[4]);
+   MPI_Recv_init(&(Table[0][(cols_per_block+1)*num_elements]),num_elements,MPI_CHAR,NE,tag,comm,&receive_request[5]);
+   MPI_Recv_init(&(Table[rows_per_block+1][0]),num_elements,MPI_CHAR,SW,tag,comm,&receive_request[6]);
+   MPI_Recv_init(&(Table[rows_per_block+1][(cols_per_block+1)*num_elements]),num_elements,MPI_CHAR,SE,tag,comm,&receive_request[7]);
   
 
    MPI_Status status[8];
@@ -317,63 +322,57 @@ int main(int argc,char **argv) {
       //Do for our table
       for(int i=2;i<rows_per_block;i++){
          for(int j=2*num_elements;j<cols_per_block*num_elements;j++){
-     		if(convolution(Table, Final,i,j,h,num_elements) && !changes){
-           		changes++;
-        	}
-  
+            if(convolution(Table, Final,i,j,h,num_elements) && !changes){
+               changes++;
+            }
          }
       }
       MPI_Waitall(8, receive_request,status);
 
       //do the job for receive
       //First row
-     for(int j=num_elements;j<(cols_per_block+1)*num_elements;j++){
-      	if(convolution(Table, Final,1,j,h,num_elements) && !changes){
-           	changes++;
-        }
+      for(int j=num_elements;j<(cols_per_block+1)*num_elements;j++){
+         if(convolution(Table, Final,1,j,h,num_elements) && !changes){
+            changes++;
+         }
       }
-     
       //Last row
       for(int j=num_elements;j<(cols_per_block+1)*num_elements;j++){
- 		if(convolution(Table, Final,rows_per_block,j,h,num_elements) && !changes){
-       		changes++;
-    	}
+         if(convolution(Table, Final,rows_per_block,j,h,num_elements) && !changes){
+            changes++;
+         }
       }
-
       //First col and last col for each middle row
       for(int i=2;i<rows_per_block;i++){
-   		for(int k=0;k<num_elements;k++){
-			if(convolution(Table,Final,i,num_elements+k,h,num_elements) && !changes){
-				changes++;
-			}
-			if(convolution(Table,Final,i,cols_per_block*num_elements+k,h,num_elements) && !changes){
-	            changes++;
-	         }
-   		}
-       
+         for(int k=0;k<num_elements;k++){
+            if(convolution(Table,Final,i,num_elements+k,h,num_elements) && !changes){
+               changes++;
+            }
+            if(convolution(Table,Final,i,cols_per_block*num_elements+k,h,num_elements) && !changes){
+               changes++;
+            }
+         }
       }
-  
-      short int ** temp;
+
+      unsigned char ** temp;
       temp = Table;
       Table = Final;
       Final = temp;
       MPI_Waitall(8,send_request,status);
       //Reduce all changes
       if(loop % 10 == 0){
-         MPI_Allreduce(&changes,&sum_changes, 1, MPI_SHORT, MPI_SUM, comm);
+         MPI_Allreduce(&changes,&sum_changes, 1, MPI_CHAR, MPI_SUM, comm);
          changes = 0;
          if(sum_changes == 0){
             if(my_rank == 0)
                printf("No changes in loop %d!\n",loop);
-            //break;
+            break;
          }
-         /*else if(loop > 100){
-            h[0][1] = 0;
-         }*/
       }
    }
    finish = MPI_Wtime();
 
+   MPI_Barrier(MPI_COMM_WORLD);
    double local_elapsed, elapsed;
    local_elapsed = finish - start;
    MPI_Reduce(&local_elapsed, &elapsed, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
@@ -382,12 +381,12 @@ int main(int argc,char **argv) {
       printf("Time elapsed: %f seconds\n", elapsed);
    }
    /* Shut down MPI */
-   for(int i=0;i<line_div;i++){
+   /*for(int i=0;i<(rows_per_block+2);i++){
       free(Table[i]);
       free(Final[i]);
    }
    free(Table);
-   free(Final);
+   free(Final);*/
    MPI_Finalize(); 
 
    return 0;
