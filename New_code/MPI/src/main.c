@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include "../include/halo_points.h"
 
 static inline int convolution(unsigned char **Table,unsigned char **Final,int i,int j,float h[3][3],int num_elements){
    Final[i][j] = (unsigned char) ceil(h[0][0] * Table[i-1][j-num_elements] + h[0][1] * Table[i-1][j] + h[0][2]*Table[i-1][j+num_elements] +
@@ -13,7 +14,7 @@ static inline int convolution(unsigned char **Table,unsigned char **Final,int i,
 }
 
 void Usage(char *prog_name) {
-   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops>\n", prog_name);
+   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops> -o <output_file>\n", prog_name);
 }  /* Usage */
 
 
@@ -24,7 +25,7 @@ int main(int argc,char **argv) {
    int i;
 
    //Create Filter
-   unsigned char k[3][3] = {{0,1,0},{0,1,0},{0,0,0}};
+   unsigned char k[3][3] = {{0,0,0},{0,1,0},{0,0,0}};
    float h[3][3];
    int sum = 0;
    for(int i=0;i<3;i++){
@@ -52,11 +53,15 @@ int main(int argc,char **argv) {
    int M = 1920;
    int max_loops = 200;
    char * filename = NULL;
+   char * output = NULL;
    int num_elements = 1;
    i=1;
    while(i<argc){
       if (!strcmp(argv[i], "-f")){
          filename = argv[i+1];
+      }
+      else if (!strcmp(argv[i], "-o")){
+         output = argv[i+1];
       }
       else if (!strcmp(argv[i], "-r"))
       {
@@ -83,9 +88,25 @@ int main(int argc,char **argv) {
             Usage(argv[0]);
          }
          MPI_Finalize();
-         return 0;
+         return 1;
       }
       i+=2;
+   }
+
+   if(filename == NULL){
+      if(my_rank == 0){
+         Usage(argv[0]);
+      }
+      MPI_Finalize();
+      return 2;
+   }
+
+   if(output == NULL){
+      if(my_rank == 0){
+         Usage(argv[0]);
+      }
+      MPI_Finalize();
+      return 3;
    }
 
    if(my_rank == 0){
@@ -124,36 +145,23 @@ int main(int argc,char **argv) {
       fprintf(stderr,"cols_per_block: %d\n",cols_per_block*num_elements);
       fprintf(stderr,"process_row: %d\n",process_row);
       fprintf(stderr,"process_col: %d\n",process_col);
-
    }
    
 
-
-   unsigned char ** Table = (unsigned char **)malloc(sizeof(unsigned char *)*(rows_per_block+2));
-   Table[0] = (unsigned char *)malloc(sizeof(unsigned char)*(rows_per_block+2)*(cols_per_block+2)*num_elements); 
-   unsigned char ** Final = (unsigned char **)malloc(sizeof(unsigned char *)*(rows_per_block+2));
-   Final[0] = (unsigned char *)malloc(sizeof(unsigned char)*(rows_per_block+2)*(cols_per_block+2)*num_elements);
-   for(int i=0;i<rows_per_block+2;i++){
-      Table[i]=&(Table[0][i*(cols_per_block+2)*num_elements]);
-      Final[i]=&(Final[0][i*(cols_per_block+2)*num_elements]);
-      if((i == 0) || (i == (rows_per_block+1))){
-         for(int j=0;j<(cols_per_block+2)*num_elements;j++){
-            Table[i][j] = 255;
-         }
-         continue;
-      }
-      for(int j=0;j<(cols_per_block+2)*num_elements;j++){
-         if(j<num_elements){
-            Table[i][j] = 255;
-         }
-         else if(j >=  (cols_per_block+1)*num_elements){
-            Table[i][j] = 255;
-         }
-         else{
-            Table[i][j] = my_rank;//rand() % 256; //my_rank;
-         }
-      }
+   //Allocate Process Tables and Halo Points
+   unsigned char ** Table = (unsigned char **)malloc(sizeof(unsigned char *)*rows_per_block);
+   Table[0] = (unsigned char *)malloc(sizeof(unsigned char)*rows_per_block*cols_per_block*num_elements); 
+   unsigned char ** Final = (unsigned char **)malloc(sizeof(unsigned char *)*rows_per_block);
+   Final[0] = (unsigned char *)malloc(sizeof(unsigned char)*rows_per_block*cols_per_block*num_elements);
+  
+  for(int i=0;i<rows_per_block;i++){
+      Table[i]=&(Table[0][i*cols_per_block*num_elements]);
+      Final[i]=&(Final[0][i*cols_per_block*num_elements]);
    }
+
+
+   Halo_points * halo_p = (Halo_points *)malloc(sizeof(Halo_points));
+   Initialize_Halo(halo_p,rows_per_block,cols_per_block,num_elements);
    
 
    //Neighbors
@@ -169,6 +177,8 @@ int main(int argc,char **argv) {
 
 
    int North,South,East,West,NW,NE,SW,SE;
+
+   //North Neighbor
    neigh[0] = coord[0] - 1;
    neigh[1] = coord[1];
    if(neigh[0] < 0){
@@ -178,6 +188,7 @@ int main(int argc,char **argv) {
       MPI_Cart_rank(comm, neigh, &North);
    }
 
+   //South Neighbor
    neigh[0] = coord[0] + 1;
    neigh[1] = coord[1];
    if(neigh[0] >= process_row){
@@ -187,6 +198,8 @@ int main(int argc,char **argv) {
       MPI_Cart_rank(comm, neigh, &South);
    }
 
+
+   //East Neighbor
    neigh[0] = coord[0];
    neigh[1] = coord[1] + 1;
    if(neigh[1] >= process_col){
@@ -196,6 +209,7 @@ int main(int argc,char **argv) {
       MPI_Cart_rank(comm, neigh, &East);
    }
 
+   //West Neighbor
    neigh[0] = coord[0];
    neigh[1] = coord[1] - 1;
    if(neigh[1] < 0){
@@ -205,6 +219,7 @@ int main(int argc,char **argv) {
       MPI_Cart_rank(comm, neigh, &West);
    }
 
+   //North East Neighbor
    neigh[0] = coord[0] - 1;
    neigh[1] = coord[1] + 1;
    if(neigh[0] < 0){
@@ -217,6 +232,7 @@ int main(int argc,char **argv) {
       MPI_Cart_rank(comm, neigh, &NE);
    }
 
+   //North West Neighbor
    neigh[0] = coord[0] - 1;
    neigh[1] = coord[1] - 1;
    if(neigh[0] < 0){
@@ -229,6 +245,7 @@ int main(int argc,char **argv) {
       MPI_Cart_rank(comm, neigh, &NW);
    }
 
+   //South East Neighbor
    neigh[0] = coord[0] + 1;
    neigh[1] = coord[1] + 1;
    if(neigh[0] >= process_row){
@@ -241,6 +258,7 @@ int main(int argc,char **argv) {
       MPI_Cart_rank(comm, neigh, &SE);
    }
 
+   //South West Neighbor
    neigh[0] = coord[0] + 1;
    neigh[1] = coord[1] - 1;
    if(neigh[0] >= process_row){
@@ -253,57 +271,103 @@ int main(int argc,char **argv) {
       MPI_Cart_rank(comm, neigh, &SW);
    }
    
-   /*printf("Rank: %d -> (%d,%d)\n \tNorth: %d, South: %d, West: %d, East: %d\n\t\
-       North West: %d, North East: %d, South West: %d, South East: %d\n",
-      my_rank,coord[0],coord[1],North,South,West,East,NW,NE,SW,SE);
-   */
+
+
+
+   MPI_Aint lb, extent; 
+   MPI_Datatype etype, filetype, contig; 
+   MPI_Offset disp;
+   //basic unit of data access
+   etype = MPI_UNSIGNED_CHAR;
+   lb = 0; 
+   MPI_Type_contiguous(cols_per_block*num_elements, MPI_UNSIGNED_CHAR, &contig);
+   //extent = number of bytes to read/write + number of bytes to skip for next column
+   extent = (int)processors_sqrt*cols_per_block*num_elements* sizeof(unsigned char);
+   //filetype = specifies which portion of the file is visible to the process
+   MPI_Type_create_resized(contig, lb, extent, &filetype);
+   MPI_Type_commit(&filetype);
+   //disp = number of bytes to be skipped from the start of the file 
+   disp = coord[0] *(int)processors_sqrt*cols_per_block *rows_per_block*num_elements + 
+      coord[1] * cols_per_block*num_elements;
+
+   
+   //Parallel I/0 read image
+   
+   MPI_File fh;
+   // Open input image file 
+   MPI_File_open(comm, filename,
+      MPI_MODE_RDWR, MPI_INFO_NULL, &fh); 
+   // Set view for each process
+   MPI_File_set_view(fh, disp, etype, filetype, "native",
+         MPI_INFO_NULL);
+   //Read the bytes
+   MPI_File_read(fh,Table[0],rows_per_block*cols_per_block*num_elements,
+      MPI_UNSIGNED_CHAR,MPI_STATUS_IGNORE);
+   //Close output file
+   MPI_File_close(&fh);
+
 
    //Define cols datatype
    MPI_Datatype cols_type,column_type;
-   MPI_Type_vector(rows_per_block,num_elements,(cols_per_block+2)*num_elements,MPI_UNSIGNED_CHAR,&cols_type);
+   MPI_Type_vector(rows_per_block,num_elements,cols_per_block*num_elements,MPI_UNSIGNED_CHAR,
+      &cols_type);
    MPI_Type_commit(&cols_type);
    
 
+   
    int tag = 11;
    //Create messages
    MPI_Request send_request[8];
    //rows
-   MPI_Send_init(&(Table[1][num_elements]),cols_per_block*num_elements, MPI_UNSIGNED_CHAR, North, 1, comm, &send_request[0]);
-   MPI_Send_init(&(Table[rows_per_block][num_elements]),cols_per_block*num_elements, MPI_UNSIGNED_CHAR,South,2, comm, &send_request[1]);
+   MPI_Send_init(&(Table[0][0]),cols_per_block*num_elements, MPI_UNSIGNED_CHAR, North, 
+      1, comm, &send_request[0]);
+   MPI_Send_init(&(Table[rows_per_block-1][0]),cols_per_block*num_elements,
+    MPI_UNSIGNED_CHAR,South,2, comm, &send_request[1]);
    //cols
-   MPI_Send_init(&(Table[1][num_elements]),1,cols_type,West,3,comm,&send_request[2]);
-   MPI_Send_init(&(Table[1][cols_per_block*num_elements]),1,cols_type,East,4,comm,&send_request[3]);
+   MPI_Send_init(&(Table[0][0]),1,cols_type,West,3,comm,&send_request[2]);
+   MPI_Send_init(&(Table[0][(cols_per_block-1)*num_elements]),1,cols_type,East,4,comm,
+      &send_request[3]);
    
    //corners
-   MPI_Send_init(&(Table[1][num_elements]),num_elements, MPI_UNSIGNED_CHAR,NW, 5, comm, &send_request[4]);
-   MPI_Send_init(&(Table[1][cols_per_block*num_elements]),num_elements,MPI_UNSIGNED_CHAR,NE,6,comm,&send_request[5]);
-   MPI_Send_init(&(Table[rows_per_block][num_elements]),num_elements,MPI_UNSIGNED_CHAR,SW,7,comm,&send_request[6]);
-   MPI_Send_init(&(Table[rows_per_block][cols_per_block*num_elements]),num_elements,MPI_UNSIGNED_CHAR,SE,8, comm, &send_request[7]);
+   MPI_Send_init(&(Table[0][0]),num_elements, MPI_UNSIGNED_CHAR,NW, 5, comm, 
+      &send_request[4]);
+   MPI_Send_init(&(Table[0][(cols_per_block-1)*num_elements]),num_elements,MPI_UNSIGNED_CHAR,NE,6,
+      comm,&send_request[5]);
+   MPI_Send_init(&(Table[rows_per_block-1][0]),num_elements,MPI_UNSIGNED_CHAR,SW,7,
+      comm,&send_request[6]);
+   MPI_Send_init(&(Table[rows_per_block-1][(cols_per_block-1)*num_elements]),num_elements,
+      MPI_UNSIGNED_CHAR,SE,8, comm, &send_request[7]);
+
 
 
    MPI_Request receive_request[8];
    //rows
-   MPI_Recv_init(&(Table[0][num_elements]),cols_per_block*num_elements, MPI_UNSIGNED_CHAR, North, 2, comm, &receive_request[0]);
-   MPI_Recv_init(&(Table[rows_per_block+1][num_elements]), cols_per_block*num_elements, MPI_UNSIGNED_CHAR, South, 1, comm, &receive_request[1]);
+   MPI_Recv_init(halo_p->North,cols_per_block*num_elements, MPI_UNSIGNED_CHAR, North, 2, comm, 
+      &receive_request[0]);
+   MPI_Recv_init(halo_p->South, cols_per_block*num_elements, MPI_UNSIGNED_CHAR, South, 1, comm, 
+      &receive_request[1]);
+   
    //cols
-   MPI_Recv_init(&(Table[1][0]),1, cols_type, West, 4, comm, &receive_request[2]);
-   MPI_Recv_init(&(Table[1][(cols_per_block+1)*num_elements]),1, cols_type, East, 3, comm, &receive_request[3]);
+   MPI_Recv_init(halo_p->West,rows_per_block*num_elements, MPI_UNSIGNED_CHAR, West, 4, comm, 
+      &receive_request[2]);
+   MPI_Recv_init(halo_p->East,rows_per_block*num_elements, MPI_UNSIGNED_CHAR, East, 3, comm, 
+      &receive_request[3]);
    
    //corners
-   MPI_Recv_init(&(Table[0][0]),num_elements,MPI_UNSIGNED_CHAR,NW,8,comm,&receive_request[4]);
-   MPI_Recv_init(&(Table[0][(cols_per_block+1)*num_elements]),num_elements,MPI_UNSIGNED_CHAR,NE,7,comm,&receive_request[5]);
-   MPI_Recv_init(&(Table[rows_per_block+1][0]),num_elements,MPI_UNSIGNED_CHAR,SW,6,comm,&receive_request[6]);
-   MPI_Recv_init(&(Table[rows_per_block+1][(cols_per_block+1)*num_elements]),num_elements,MPI_UNSIGNED_CHAR,SE,5,comm,&receive_request[7]);
-
+   MPI_Recv_init(halo_p->North_West,num_elements,MPI_UNSIGNED_CHAR,NW,8,comm,&receive_request[4]);
+   MPI_Recv_init(halo_p->North_East,num_elements,MPI_UNSIGNED_CHAR,NE,7,comm,&receive_request[5]);
+   MPI_Recv_init(halo_p->South_West,num_elements,MPI_UNSIGNED_CHAR,SW,6,comm,&receive_request[6]);
+   MPI_Recv_init(halo_p->South_East,num_elements,MPI_UNSIGNED_CHAR,SE,5,comm,&receive_request[7]);
+   
 
    MPI_Status status[8];
    //4x ISend
-   /*MPI_Startall(8, send_request);
+   MPI_Startall(8, send_request);
    //4x IRecv
    MPI_Startall(8, receive_request);
    MPI_Waitall(8, receive_request,status);
-   */
-
+   
+   /*
    int loop = 0;
    int changes = 0;
    int sum_changes;
@@ -378,36 +442,64 @@ int main(int argc,char **argv) {
    if(my_rank == 0){
       printf("Time elapsed: %f seconds\n", elapsed);
    }
-   
+   */
 
+   // if(my_rank == 0){
+   //    printf("North: ");
+   //    for(int i =0;i<cols_per_block*num_elements;i++){
+   //       printf("%c ",halo_p->North[i]);
+   //    }
+   //    printf("\nSouth: ");
+   //    for(int i =0;i<cols_per_block*num_elements;i++){
+   //       printf("%c ",halo_p->South[i]);
+   //    }
+   //    printf("\nWest: ");
+   //    for(int i =0;i<rows_per_block*num_elements;i++){
+   //       printf("%c ",halo_p->West[i]);
+   //    }
+   //    printf("\nEast: ");
+   //    for(int i =0;i<rows_per_block*num_elements;i++){
+   //       printf("%c ",halo_p->East[i]);
+   //    }
+   // }
+   if (my_rank==0)
+   {
+      for (int i=0;i<rows_per_block;i++)
+         for (int j=0;j<cols_per_block;j++)
+         {
+            if (j%cols_per_block==0)
+               printf("\n");
+            printf("%c", Table[i][j]);
+
+         }
+   }
    /* Shut down MPI */
    MPI_Barrier(MPI_COMM_WORLD);
-   /*if(my_rank == 4){
-      for(int i=0;i<(rows_per_block+2);i++){
-         for(int j=0;j<(cols_per_block+2)*num_elements;j++){
-            printf("%d ",Table[i][j]);
-         }
-         printf("\n");
-      }
-   }
-   if(my_rank == 0){
-      for(int i=0;i<(rows_per_block+2);i++){
-         for(int j=0;j<(cols_per_block+2)*num_elements;j++){
-            fprintf(stderr,"%d ",Table[i][j]);
-         }
-         fprintf(stderr,"\n");
-      }
-   }*/
-   /*for(int i=0;i<(rows_per_block+2);i++){
-      free(Table[i]);
-      free(Final[i]);
-   }*/
+
+
+   //MPI Parallel I/O Write the final image
+   
+   MPI_File fw; 
+   // Open output image file
+   MPI_File_open(comm, output,
+      MPI_MODE_CREATE|MPI_MODE_RDWR, MPI_INFO_NULL, &fw);
+   // Set view for each process
+   MPI_File_set_view(fw, disp, etype, filetype, "native",
+         MPI_INFO_NULL);
+   //Write the bytes
+   MPI_File_write(fw,Table[0],rows_per_block*cols_per_block*num_elements,
+      MPI_UNSIGNED_CHAR,MPI_STATUS_IGNORE);
+   //Close output file
+   MPI_File_close(&fw); 
+
+   Delete_Halo(halo_p);
+   free(halo_p);
    free(Table[0]);
    free(Final[0]);
    free(Table);
    free(Final);
-   //printf("I am process %d and i am out!\n",my_rank);
+   
    MPI_Finalize(); 
 
    return 0;
-}  /* main */
+}
