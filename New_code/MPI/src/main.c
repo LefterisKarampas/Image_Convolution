@@ -7,11 +7,54 @@
 #include "../include/halo_points.h"
 
 static inline int convolution(unsigned char **Table,unsigned char **Final,int i,int j,float h[3][3],int num_elements){
-   Final[i][j] = (unsigned char) ceil(h[0][0] * Table[i-1][j-num_elements] + h[0][1] * Table[i-1][j] + h[0][2]*Table[i-1][j+num_elements] +
-     Table[i][j-num_elements] * h[1][0] + (h[1][1]*Table[i][j]) + (h[1][2] * Table[i][j+num_elements]) + 
-      (h[2][0]*Table[i+1][j-num_elements])+(h[2][1] *Table[i+1][j]) + (h[2][2] *Table[i+1][j+num_elements])) % 256;
+   Final[i][j] = (unsigned char) ceil(h[0][0] * Table[i-1][j-num_elements] + 
+      h[0][1] * Table[i-1][j] + h[0][2]*Table[i-1][j+num_elements] +
+      Table[i][j-num_elements] * h[1][0] + (h[1][1]*Table[i][j]) + 
+      (h[1][2] * Table[i][j+num_elements]) + 
+      (h[2][0]*Table[i+1][j-num_elements])+
+      (h[2][1] *Table[i+1][j]) + (h[2][2] *Table[i+1][j+num_elements])) % 256;
    return (Final[i][j] == Table[i][j]);
 }
+
+static inline int halo_convolution(unsigned char **Table,unsigned char **Final,int i,int j,float h[3][3],
+   int num_elements,unsigned char *halo,int flag){
+   //Flag 0 is North Halo
+   if(flag==0){
+      Final[i][j] = (unsigned char) ceil(h[0][0] * halo[j-num_elements] + 
+      h[0][1] * halo[j] + h[0][2]*halo[j+num_elements] +
+      Table[i][j-num_elements] * h[1][0] + (h[1][1]*Table[i][j]) + 
+      (h[1][2] * Table[i][j+num_elements]) + 
+      (h[2][0]*Table[i+1][j-num_elements])+
+      (h[2][1] *Table[i+1][j]) + (h[2][2] *Table[i+1][j+num_elements])) % 256;
+   }
+   //Flag 1 is West Halo
+   else if(flag == 1){
+      Final[i][j] = (unsigned char) ceil(h[0][0] * halo[i-num_elements] + 
+      (h[0][1] * Table[i-1][j]) + h[0][2]*Table[i-1][j+num_elements] +
+      (h[1][0]*halo[i]) + (h[1][1]*Table[i][j]) + (h[1][2]*Table[i][j+num_elements]) + 
+      (h[2][0]*halo[i+num_elements])+(h[2][1]*Table[i+1][j]) + (h[2][2] *Table[i+1][j+num_elements])) % 256;
+   }
+   //Flag 2 is South Halo
+   else if(flag == 2){
+      Final[i][j] = (unsigned char) ceil(h[0][0] * Table[i-1][j-num_elements] + 
+      h[0][1] * Table[i-1][j] + h[0][2]*Table[i-1][j+num_elements] +
+      Table[i][j-num_elements] * h[1][0] + (h[1][1]*Table[i][j]) + 
+      (h[1][2] * Table[i][j+num_elements]) + 
+      (h[2][0]*halo[j-num_elements])+
+      (h[2][1] *halo[j]) + (h[2][2] *halo[j+num_elements])) % 256;
+   }
+   //Flag 3 is East Halo
+   else{
+      Final[i][j] = (unsigned char) ceil(h[0][0] * Table[i-1][j-num_elements] + 
+      h[0][1] * Table[i-1][j] + h[0][2]*halo[i-num_elements] +
+      Table[i][j-num_elements] * h[1][0] + (h[1][1]*Table[i][j]) + 
+      (h[1][2] * halo[i]) + 
+      (h[2][0]*Table[i+1][j-num_elements])+
+      (h[2][1] *Table[i+1][j]) + (h[2][2] *halo[i+num_elements])) % 256;
+   }
+   return (Final[i][j] == Table[i][j]);
+}
+
 
 void Usage(char *prog_name) {
    fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops> -o <output_file>\n", prog_name);
@@ -25,7 +68,7 @@ int main(int argc,char **argv) {
    int i;
 
    //Create Filter
-   unsigned char k[3][3] = {{0,0,0},{0,1,0},{0,0,0}};
+   unsigned char k[3][3] = {{0,1,0},{0,1,0},{0,0,0}};
    float h[3][3];
    int sum = 0;
    for(int i=0;i<3;i++){
@@ -362,12 +405,12 @@ int main(int argc,char **argv) {
 
    MPI_Status status[8];
    //4x ISend
-   MPI_Startall(8, send_request);
+   //MPI_Startall(8, send_request);
    //4x IRecv
-   MPI_Startall(8, receive_request);
-   MPI_Waitall(8, receive_request,status);
+   //MPI_Startall(8, receive_request);
+   //MPI_Waitall(8, receive_request,status);
    
-   /*
+   
    int loop = 0;
    int changes = 0;
    int sum_changes;
@@ -382,8 +425,8 @@ int main(int argc,char **argv) {
       MPI_Startall(8, receive_request);
       
       //Do for our table
-      for(int i=2;i<rows_per_block;i++){
-         for(int j=2*num_elements;j<cols_per_block*num_elements;j++){
+      for(int i=1;i<(rows_per_block-1);i++){
+         for(int j=num_elements;j<(cols_per_block-1)*num_elements;j++){
             if(convolution(Table, Final,i,j,h,num_elements) && !changes){
                changes++;
             }
@@ -393,29 +436,78 @@ int main(int argc,char **argv) {
 
       //do the job for receive
       //First row
-      for(int j=num_elements;j<(cols_per_block+1)*num_elements;j++){
-         if(convolution(Table, Final,1,j,h,num_elements) && !changes){
+      for(int j=num_elements;j<(cols_per_block-1)*num_elements;j++){
+         if(halo_convolution(Table, Final,0,j,h,num_elements,halo_p->North,0) && !changes){
             changes++;
          }
       }
       //Last row
-      for(int j=num_elements;j<(cols_per_block+1)*num_elements;j++){
-         if(convolution(Table, Final,rows_per_block,j,h,num_elements) && !changes){
+      for(int j=num_elements;j<(cols_per_block-1)*num_elements;j++){
+         if(halo_convolution(Table, Final,rows_per_block-1,j,h,num_elements,halo_p->South,2) && !changes){
             changes++;
          }
       }
       //First col and last col for each middle row
-      for(int i=2;i<rows_per_block;i++){
+      for(i=1;i<(rows_per_block-1);i++){
          for(int k=0;k<num_elements;k++){
-            if(convolution(Table,Final,i,num_elements+k,h,num_elements) && !changes){
+            if(halo_convolution(Table,Final,i,k,h,num_elements,halo_p->West,1) && !changes){
                changes++;
             }
-            if(convolution(Table,Final,i,cols_per_block*num_elements+k,h,num_elements) && !changes){
+            if(halo_convolution(Table,Final,i,(cols_per_block-1)*num_elements+k,h,num_elements,halo_p->East,3) && !changes){
                changes++;
             }
          }
       }
 
+      //North West Corner
+      for(int k=0;k<num_elements;k++){
+         Final[0][k] = (unsigned char) ceil(h[0][0] *halo_p->North_West[k] + 
+            h[0][1] * halo_p->North[k] + h[0][2]*halo_p->North[k+num_elements] +
+            halo_p->West[k] * h[1][0] + (h[1][1]*Table[0][k]) + 
+            (h[1][2] * Table[0][k+num_elements]) + 
+            (h[2][0]*halo_p->West[k+num_elements])+
+            (h[2][1] *Table[1][k]) + (h[2][2] *Table[1][k+num_elements])) % 256;
+         if(!(Final[0][0] == Table[0][0]))
+            changes++;
+      }
+
+      //South West Corner
+      for(int k=0;k<num_elements;k++){
+         Final[rows_per_block-1][k] = (unsigned char) ceil(h[0][0] *halo_p->West[k-num_elements] + 
+            h[0][1] * Table[rows_per_block-2][k] + h[0][2]*Table[rows_per_block-2][k+num_elements] +
+            halo_p->West[(cols_per_block-1)*num_elements+k] * h[1][0] + (h[1][1]*Table[rows_per_block-1][k]) + 
+            (h[1][2] * Table[rows_per_block-1][k+num_elements]) + 
+            (h[2][0]*halo_p->South_West[k])+
+            (h[2][1]*halo_p->South[k]) + (h[2][2] *halo_p->South[k+num_elements])) % 256;
+         if(!(Final[0][0] == Table[0][0]))
+            changes++;
+      }
+
+      //North East Corner
+      for(int k=0;k<num_elements;k++){
+         Final[rows_per_block-1][(cols_per_block-1)*num_elements] = (unsigned char) ceil(h[0][0] *halo_p->North[(cols_per_block-2)*num_elements+k] + 
+            h[0][1] *halo_p->North[(cols_per_block-1)*num_elements+k] + h[0][2]*halo_p->North_East[k] +
+            Table[0][(cols_per_block-2)*num_elements+k] * h[1][0] + (h[1][1]*Table[rows_per_block-1][(cols_per_block-1)*num_elements]) + 
+            (h[1][2] * halo_p->East[k]) + 
+            (h[2][0]*Table[1][(cols_per_block-2)*num_elements+k])+
+            (h[2][1]*Table[1][(cols_per_block-1)*num_elements+k]) + (h[2][2] *halo_p->East[k+num_elements])) % 256;
+         if(!(Final[0][0] == Table[0][0]))
+            changes++;
+      }
+
+      //South East Corner
+      for(int k=0;k<num_elements;k++){
+         Final[rows_per_block-1][(cols_per_block-1)*num_elements] = (unsigned char) ceil(h[0][0] *Table[rows_per_block-2][(cols_per_block-2)*num_elements+k] + 
+            h[0][1] *Table[rows_per_block-2][(cols_per_block-1)*num_elements+k] + h[0][2]*halo_p->East[k-num_elements] +
+            Table[rows_per_block-1][(cols_per_block-2)*num_elements+k] * h[1][0] + (h[1][1]*Table[rows_per_block-1][(cols_per_block-1)*num_elements+k]) + 
+            (h[1][2] * halo_p->East[(cols_per_block-1)*num_elements+k]) + 
+            (h[2][0]*Table[1][(cols_per_block-2)*num_elements+k])+
+            (h[2][1]*Table[1][(cols_per_block-1)*num_elements+k]) + (h[2][2] *halo_p->South_East[k])) % 256;
+         if(!(Final[0][0] == Table[0][0]))
+            changes++;
+      }
+
+      
       unsigned char ** temp;
       temp = Table;
       Table = Final;
@@ -433,7 +525,7 @@ int main(int argc,char **argv) {
       }
    }
    finish = MPI_Wtime();
-
+   
    MPI_Barrier(MPI_COMM_WORLD);
    double local_elapsed, elapsed;
    local_elapsed = finish - start;
@@ -442,37 +534,53 @@ int main(int argc,char **argv) {
    if(my_rank == 0){
       printf("Time elapsed: %f seconds\n", elapsed);
    }
-   */
-
-   // if(my_rank == 0){
-   //    printf("North: ");
-   //    for(int i =0;i<cols_per_block*num_elements;i++){
-   //       printf("%c ",halo_p->North[i]);
-   //    }
-   //    printf("\nSouth: ");
-   //    for(int i =0;i<cols_per_block*num_elements;i++){
-   //       printf("%c ",halo_p->South[i]);
-   //    }
-   //    printf("\nWest: ");
-   //    for(int i =0;i<rows_per_block*num_elements;i++){
-   //       printf("%c ",halo_p->West[i]);
-   //    }
-   //    printf("\nEast: ");
-   //    for(int i =0;i<rows_per_block*num_elements;i++){
-   //       printf("%c ",halo_p->East[i]);
-   //    }
-   // }
+   
+   /*if(my_rank == 4){
+      printf("North: ");
+      for(int i =0;i<cols_per_block*num_elements;i++){
+         printf("%c ",halo_p->North[i]);
+      }
+      printf("\nSouth: ");
+      for(int i =0;i<cols_per_block*num_elements;i++){
+         printf("%c ",halo_p->South[i]);
+      }
+      printf("\nWest: ");
+      for(int i =0;i<rows_per_block*num_elements;i++){
+         printf("%c ",halo_p->West[i]);
+      }
+      printf("\nEast: ");
+      for(int i =0;i<rows_per_block*num_elements;i++){
+         printf("%c ",halo_p->East[i]);
+      }
+      printf("\nNorth East: ");
+      for(int i =0;i<num_elements;i++){
+         printf("%c ",halo_p->North_East[i]);
+      }
+      printf("\nSouth East: ");
+      for(int i =0;i<num_elements;i++){
+         printf("%c ",halo_p->South_East[i]);
+      }
+      printf("\nNorth_West: ");
+      for(int i =0;i<num_elements;i++){
+         printf("%c ",halo_p->North_West[i]);
+      }
+      printf("\nSouth_West: ");
+      for(int i =0;i<num_elements;i++){
+         printf("%c ",halo_p->South_West[i]);
+      }
+   }
    if (my_rank==0)
    {
       for (int i=0;i<rows_per_block;i++)
-         for (int j=0;j<cols_per_block;j++)
+         for (int j=0;j<cols_per_block*num_elements;j++)
          {
             if (j%cols_per_block==0)
                printf("\n");
             printf("%c", Table[i][j]);
 
          }
-   }
+   }*/
+
    /* Shut down MPI */
    MPI_Barrier(MPI_COMM_WORLD);
 
@@ -491,7 +599,7 @@ int main(int argc,char **argv) {
       MPI_UNSIGNED_CHAR,MPI_STATUS_IGNORE);
    //Close output file
    MPI_File_close(&fw); 
-
+   
    Delete_Halo(halo_p);
    free(halo_p);
    free(Table[0]);
