@@ -1,2 +1,0 @@
-Process: 4 - Loops: 100 - Size: 2520 x 1920 [mpiexec@lef] Sending Ctrl-C to processes as requested [mpiexec@lef] Press Ctrl-C again to force abort Ctrl-C caught... cleaning up processes
-Process: 9 - Loops: 100 - Size: 2520 x 1920 [mpiexec@lef] Sending Ctrl-C to processes as requested [mpiexec@lef] Press Ctrl-C again to force abort
