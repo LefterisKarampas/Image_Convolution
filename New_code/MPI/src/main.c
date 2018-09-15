@@ -68,7 +68,7 @@ int main(int argc,char **argv) {
    int i;
 
    //Create Filter
-   unsigned char k[3][3] = {{0,1,0},{0,1,0},{0,0,0}};
+   unsigned char k[3][3] = {{0,0,0},{0,1,0},{0,0,0}};
    float h[3][3];
    int sum = 0;
    for(int i=0;i<3;i++){
@@ -92,8 +92,8 @@ int main(int argc,char **argv) {
    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
    /* Read Program Arguments*/
-   int N = 2520;
-   int M = 1920;
+   int N = 1920;
+   int M = 2520;
    int max_loops = 200;
    char * filename = NULL;
    char * output = NULL;
@@ -121,9 +121,6 @@ int main(int argc,char **argv) {
       else if ( !strcmp(argv[i], "-rgb") )
       {
          num_elements = 3;
-         if(my_rank == 0){
-            printf("num_elements %d\n",num_elements);
-         }
          i--;
       }
       else{
@@ -136,28 +133,22 @@ int main(int argc,char **argv) {
       i+=2;
    }
 
-   if(filename == NULL){
-      if(my_rank == 0){
-         Usage(argv[0]);
-      }
-      MPI_Finalize();
-      return 2;
-   }
-
-   if(output == NULL){
-      if(my_rank == 0){
-         Usage(argv[0]);
-      }
-      MPI_Finalize();
-      return 3;
-   }
-
    if(my_rank == 0){
       fprintf(stderr,"N: %d\n",N);
       fprintf(stderr,"M: %d\n",M);
       fprintf(stderr,"max_loops: %d\n",max_loops);
+      fprintf(stderr,"num_elements %d\n",num_elements);
       if(filename != NULL){
          fprintf(stderr,"filename: %s\n",filename);
+      }
+      else{
+         fprintf(stderr,"filename: NULL\n");
+      }
+      if(output != NULL){
+         fprintf(stderr,"output: %s\n",output);
+      }
+      else{
+         fprintf(stderr,"output: NULL\n");
       }
    }
 
@@ -335,19 +326,27 @@ int main(int argc,char **argv) {
 
    
    //Parallel I/0 read image
-   
-   MPI_File fh;
-   // Open input image file 
-   MPI_File_open(comm, filename,
-      MPI_MODE_RDWR, MPI_INFO_NULL, &fh); 
-   // Set view for each process
-   MPI_File_set_view(fh, disp, etype, filetype, "native",
-         MPI_INFO_NULL);
-   //Read the bytes
-   MPI_File_read(fh,Table[0],rows_per_block*cols_per_block*num_elements,
-      MPI_UNSIGNED_CHAR,MPI_STATUS_IGNORE);
-   //Close output file
-   MPI_File_close(&fh);
+   if(filename != NULL){
+      MPI_File fh;
+      // Open input image file 
+      MPI_File_open(comm, filename,
+         MPI_MODE_RDWR, MPI_INFO_NULL, &fh); 
+      // Set view for each process
+      MPI_File_set_view(fh, disp, etype, filetype, "native",
+            MPI_INFO_NULL);
+      //Read the bytes
+      MPI_File_read(fh,Table[0],rows_per_block*cols_per_block*num_elements,
+         MPI_UNSIGNED_CHAR,MPI_STATUS_IGNORE);
+      //Close output file
+      MPI_File_close(&fh);
+   }
+   else{
+      for(int i=0;i<rows_per_block;i++){
+         for(int j=0;j<cols_per_block*num_elements;j++){
+            Table[i][j] = (unsigned char)rand()%256;
+         }
+      }
+   }
 
 
    //Define cols datatype
@@ -404,11 +403,6 @@ int main(int argc,char **argv) {
    
 
    MPI_Status status[8];
-   //4x ISend
-   //MPI_Startall(8, send_request);
-   //4x IRecv
-   //MPI_Startall(8, receive_request);
-   //MPI_Waitall(8, receive_request,status);
    
    
    int loop = 0;
@@ -517,13 +511,9 @@ int main(int argc,char **argv) {
       if(loop % 10 == 0){
          MPI_Allreduce(&changes,&sum_changes, 1, MPI_UNSIGNED_CHAR, MPI_SUM, comm);
          changes = 0;
-         if(sum_changes == 0){
-            if(my_rank == 0)
-               printf("No changes in loop %d!\n",loop);
-            break;
-         }
       }
    }
+   
    finish = MPI_Wtime();
    
    MPI_Barrier(MPI_COMM_WORLD);
@@ -534,71 +524,40 @@ int main(int argc,char **argv) {
    if(my_rank == 0){
       printf("Time elapsed: %f seconds\n", elapsed);
    }
-   
-   /*if(my_rank == 4){
-      printf("North: ");
-      for(int i =0;i<cols_per_block*num_elements;i++){
-         printf("%c ",halo_p->North[i]);
-      }
-      printf("\nSouth: ");
-      for(int i =0;i<cols_per_block*num_elements;i++){
-         printf("%c ",halo_p->South[i]);
-      }
-      printf("\nWest: ");
-      for(int i =0;i<rows_per_block*num_elements;i++){
-         printf("%c ",halo_p->West[i]);
-      }
-      printf("\nEast: ");
-      for(int i =0;i<rows_per_block*num_elements;i++){
-         printf("%c ",halo_p->East[i]);
-      }
-      printf("\nNorth East: ");
-      for(int i =0;i<num_elements;i++){
-         printf("%c ",halo_p->North_East[i]);
-      }
-      printf("\nSouth East: ");
-      for(int i =0;i<num_elements;i++){
-         printf("%c ",halo_p->South_East[i]);
-      }
-      printf("\nNorth_West: ");
-      for(int i =0;i<num_elements;i++){
-         printf("%c ",halo_p->North_West[i]);
-      }
-      printf("\nSouth_West: ");
-      for(int i =0;i<num_elements;i++){
-         printf("%c ",halo_p->South_West[i]);
-      }
-   }
-   if (my_rank==0)
-   {
-      for (int i=0;i<rows_per_block;i++)
-         for (int j=0;j<cols_per_block*num_elements;j++)
-         {
-            if (j%cols_per_block==0)
-               printf("\n");
-            printf("%c", Table[i][j]);
-
-         }
-   }*/
 
    /* Shut down MPI */
    MPI_Barrier(MPI_COMM_WORLD);
 
 
    //MPI Parallel I/O Write the final image
-   
-   MPI_File fw; 
-   // Open output image file
-   MPI_File_open(comm, output,
-      MPI_MODE_CREATE|MPI_MODE_RDWR, MPI_INFO_NULL, &fw);
-   // Set view for each process
-   MPI_File_set_view(fw, disp, etype, filetype, "native",
-         MPI_INFO_NULL);
-   //Write the bytes
-   MPI_File_write(fw,Table[0],rows_per_block*cols_per_block*num_elements,
-      MPI_UNSIGNED_CHAR,MPI_STATUS_IGNORE);
-   //Close output file
-   MPI_File_close(&fw); 
+   if(output != NULL){
+     /* int number_loops = 0;
+      int max_loops;
+      max_loops = comm_sz / 16;
+      if(comm_sz % 16 != 0){
+         max_loops++;
+      }
+      while(number_loops <= max_loops){
+         if((my_rank >= (number_loops*16)) && (my_rank < ((number_loops+1)*16))){*/
+            MPI_File fw;
+            int err; 
+            // Open output image file
+            err = MPI_File_open(comm, output,
+               MPI_MODE_CREATE|MPI_MODE_WRONLY, MPI_INFO_NULL, &fw);
+            if (err != MPI_SUCCESS) printf("Error: MPI_File_open()\n");
+            // Set view for each process
+            MPI_File_set_view(fw, disp, etype, filetype, "native",
+                  MPI_INFO_NULL);
+            //Write the bytes
+            MPI_File_write(fw,Final[0],rows_per_block*cols_per_block*num_elements,
+               MPI_UNSIGNED_CHAR,MPI_STATUS_IGNORE);
+            //Close output file
+            MPI_File_close(&fw);
+        /* }
+         MPI_Barrier(MPI_COMM_WORLD);
+         number_loops++;
+      }*/
+   }
    
    Delete_Halo(halo_p);
    free(halo_p);

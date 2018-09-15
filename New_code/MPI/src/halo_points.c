@@ -6,6 +6,7 @@
 void Initialize_Halo(Halo_points *Halo,int rows,int columns,int num_elements){
 	Halo->North = (unsigned char *)malloc(sizeof(unsigned char)*columns*num_elements);
 	Halo->South = (unsigned char *)malloc(sizeof(unsigned char)*columns*num_elements);
+
 	Halo->East = (unsigned char *)malloc(sizeof(unsigned char)*rows*num_elements);
 	Halo->West = (unsigned char *)malloc(sizeof(unsigned char)*rows*num_elements);
 
