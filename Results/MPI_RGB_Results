@@ -1,0 +1,242 @@
+Process: 1 - Loops: 100 - Size: 480 x 630 Time elapsed: 3.554319 seconds
+
+Process: 4 - Loops: 100 - Size: 480 x 630 Time elapsed: 0.730532 seconds
+
+Process: 9 - Loops: 100 - Size: 480 x 630 Time elapsed: 0.417788 seconds
+
+Process: 16 - Loops: 100 - Size: 480 x 630 Time elapsed: 0.263242 seconds
+
+Process: 25 - Loops: 100 - Size: 480 x 630 Time elapsed: 0.164319 seconds
+
+Process: 36 - Loops: 100 - Size: 480 x 630 Time elapsed: 0.159443 seconds
+
+Process: 49 - Loops: 100 - Size: 480 x 630 Time elapsed: 0.140033 seconds
+
+Process: 64 - Loops: 100 - Size: 480 x 630 Time elapsed: 0.136560 seconds
+
+Process: 81 - Loops: 100 - Size: 480 x 630 Time elapsed: 0.221278 seconds
+
+Process: 100 - Loops: 100 - Size: 480 x 630 Time elapsed: 0.186474 seconds
+
+
+
+Process: 1 - Loops: 1000 - Size: 480 x 630 Time elapsed: 29.498524 seconds
+
+Process: 4 - Loops: 1000 - Size: 480 x 630 Time elapsed: 6.157823 seconds
+
+Process: 9 - Loops: 1000 - Size: 480 x 630 Time elapsed: 2.790456 seconds
+
+Process: 16 - Loops: 1000 - Size: 480 x 630 Time elapsed: 1.662145 seconds
+
+Process: 25 - Loops: 1000 - Size: 480 x 630 Time elapsed: 1.121072 seconds
+
+Process: 36 - Loops: 1000 - Size: 480 x 630 Time elapsed: 0.840850 seconds
+
+Process: 49 - Loops: 1000 - Size: 480 x 630 Time elapsed: 0.774665 seconds
+
+Process: 64 - Loops: 1000 - Size: 480 x 630 Time elapsed: 0.874269 seconds
+
+Process: 81 - Loops: 1000 - Size: 480 x 630 Time elapsed: 1.613976 seconds
+
+Process: 100 - Loops: 1000 - Size: 480 x 630 Time elapsed: 4.082279 seconds
+
+
+
+Process: 1 - Loops: 5000 - Size: 480 x 630 Time elapsed: 144.830469 seconds
+
+Process: 4 - Loops: 5000 - Size: 480 x 630 Time elapsed: 29.696183 seconds
+
+Process: 9 - Loops: 5000 - Size: 480 x 630 Time elapsed: 13.141605 seconds
+
+Process: 16 - Loops: 5000 - Size: 480 x 630 Time elapsed: 7.647164 seconds
+
+Process: 25 - Loops: 5000 - Size: 480 x 630 Time elapsed: 5.176225 seconds
+
+Process: 36 - Loops: 5000 - Size: 480 x 630 Time elapsed: 3.736158 seconds
+
+Process: 49 - Loops: 5000 - Size: 480 x 630 Time elapsed: 2.959347 seconds
+
+Process: 64 - Loops: 5000 - Size: 480 x 630 Time elapsed: 4.565672 seconds
+
+Process: 81 - Loops: 5000 - Size: 480 x 630 Time elapsed: 9.515947 seconds
+
+Process: 100 - Loops: 5000 - Size: 480 x 630 Time elapsed: 11.594182 seconds
+
+
+
+Process: 1 - Loops: 10000 - Size: 480 x 630 Time elapsed: 288.575788 seconds
+
+Process: 4 - Loops: 10000 - Size: 480 x 630 Time elapsed: 59.303000 seconds
+
+Process: 9 - Loops: 10000 - Size: 480 x 630 Time elapsed: 26.048864 seconds
+
+Process: 16 - Loops: 10000 - Size: 480 x 630 Time elapsed: 15.225817 seconds
+
+Process: 25 - Loops: 10000 - Size: 480 x 630 Time elapsed: 10.255670 seconds
+
+Process: 36 - Loops: 10000 - Size: 480 x 630 Time elapsed: 7.420320 seconds
+
+Process: 49 - Loops: 10000 - Size: 480 x 630 Time elapsed: 5.939345 seconds
+
+Process: 64 - Loops: 10000 - Size: 480 x 630 Time elapsed: 9.675273 seconds
+
+Process: 81 - Loops: 10000 - Size: 480 x 630 Time elapsed: 15.076153 seconds
+
+Process: 100 - Loops: 10000 - Size: 480 x 630 Time elapsed: 21.368611 seconds
+
+
+
+Process: 1 - Loops: 60000 - Size: 480 x 630 Time elapsed: 1718.244452 seconds
+
+Process: 4 - Loops: 60000 - Size: 480 x 630 Time elapsed: 363.538740 seconds
+
+Process: 9 - Loops: 60000 - Size: 480 x 630 Time elapsed: 161.530847 seconds
+
+Process: 16 - Loops: 60000 - Size: 480 x 630 Time elapsed: 99.216649 seconds
+
+Process: 25 - Loops: 60000 - Size: 480 x 630 Time elapsed: 60.445949 seconds
+
+Process: 36 - Loops: 60000 - Size: 480 x 630 Time elapsed: 44.468380 seconds
+
+Process: 49 - Loops: 60000 - Size: 480 x 630 Time elapsed: 49.430467 seconds
+
+Process: 64 - Loops: 60000 - Size: 480 x 630 Time elapsed: 58.420736 seconds
+
+Process: 81 - Loops: 60000 - Size: 480 x 630 Time elapsed: 132.489212 seconds
+
+Process: 100 - Loops: 60000 - Size: 480 x 630 Time elapsed: 193.611846 seconds
+
+
+
+Process: 1 - Loops: 100 - Size: 960 x 1260 Time elapsed: 16.889874 seconds
+
+Process: 4 - Loops: 100 - Size: 960 x 1260 Time elapsed: 3.287974 seconds
+
+Process: 9 - Loops: 100 - Size: 960 x 1260 Time elapsed: 1.458945 seconds
+
+Process: 16 - Loops: 100 - Size: 960 x 1260 Time elapsed: 0.821792 seconds
+
+Process: 25 - Loops: 100 - Size: 960 x 1260 Time elapsed: 0.517822 seconds
+
+Process: 36 - Loops: 100 - Size: 960 x 1260 Time elapsed: 0.398347 seconds
+
+Process: 49 - Loops: 100 - Size: 960 x 1260 Time elapsed: 0.299366 seconds
+
+Process: 64 - Loops: 100 - Size: 960 x 1260 Time elapsed: 0.620719 seconds
+
+Process: 81 - Loops: 100 - Size: 960 x 1260 Time elapsed: 0.891712 seconds
+
+Process: 100 - Loops: 100 - Size: 960 x 1260 Time elapsed: 1.240424 seconds
+
+
+
+Process: 1 - Loops: 1000 - Size: 960 x 1260 Time elapsed: 150.261317 seconds
+
+Process: 4 - Loops: 1000 - Size: 960 x 1260 Time elapsed: 31.855015 seconds
+
+Process: 9 - Loops: 1000 - Size: 960 x 1260 Time elapsed: 12.110179 seconds
+
+Process: 16 - Loops: 1000 - Size: 960 x 1260 Time elapsed: 6.637447 seconds
+
+Process: 25 - Loops: 1000 - Size: 960 x 1260 Time elapsed: 4.212531 seconds
+
+Process: 36 - Loops: 1000 - Size: 960 x 1260 Time elapsed: 3.031589 seconds
+
+Process: 49 - Loops: 1000 - Size: 960 x 1260 Time elapsed: 2.244503 seconds
+
+Process: 64 - Loops: 1000 - Size: 960 x 1260 Time elapsed: 2.488117 seconds
+
+Process: 81 - Loops: 1000 - Size: 960 x 1260 Time elapsed: 4.706946 seconds
+
+Process: 100 - Loops: 1000 - Size: 960 x 1260 Time elapsed: 8.529289 seconds
+
+
+
+Process: 1 - Loops: 100 - Size: 1920 x 2520 Time elapsed: 86.032841 seconds
+
+Process: 4 - Loops: 100 - Size: 1920 x 2520 Time elapsed: 34.485897 seconds
+
+Process: 9 - Loops: 100 - Size: 1920 x 2520 Time elapsed: 12.695721 seconds
+
+Process: 16 - Loops: 100 - Size: 1920 x 2520 Time elapsed: 6.145810 seconds
+
+Process: 25 - Loops: 100 - Size: 1920 x 2520 Time elapsed: 3.884104 seconds
+
+Process: 36 - Loops: 100 - Size: 1920 x 2520 Time elapsed: 2.795655 seconds
+
+Process: 49 - Loops: 100 - Size: 1920 x 2520 Time elapsed: 2.011986 seconds
+
+Process: 64 - Loops: 100 - Size: 1920 x 2520 Time elapsed: 1.527421 seconds
+
+Process: 81 - Loops: 100 - Size: 1920 x 2520 Time elapsed: 1.242844 seconds
+
+Process: 100 - Loops: 100 - Size: 1920 x 2520 Time elapsed: 1.291176 seconds
+
+
+
+Process: 1 - Loops: 1000 - Size: 1920 x 2520 Time elapsed: 788.617303 seconds
+
+Process: 4 - Loops: 1000 - Size: 1920 x 2520 Time elapsed: 333.643703 seconds
+
+Process: 9 - Loops: 1000 - Size: 1920 x 2520 Time elapsed: 129.003696 seconds
+
+Process: 16 - Loops: 1000 - Size: 1920 x 2520 Time elapsed: 53.566150 seconds
+
+Process: 25 - Loops: 1000 - Size: 1920 x 2520 Time elapsed: 32.495710 seconds
+
+Process: 36 - Loops: 1000 - Size: 1920 x 2520 Time elapsed: 23.334104 seconds
+
+Process: 49 - Loops: 1000 - Size: 1920 x 2520 Time elapsed: 16.419717 seconds
+
+Process: 64 - Loops: 1000 - Size: 1920 x 2520 Time elapsed: 12.643763 seconds
+
+Process: 81 - Loops: 1000 - Size: 1920 x 2520 Time elapsed: 10.835711 seconds
+
+Process: 100 - Loops: 1000 - Size: 1920 x 2520 Time elapsed: 9.624842 seconds
+
+
+
+Process: 1 - Loops: 5000 - Size: 1920 x 2520 Time elapsed: 3881.421054 seconds
+
+Process: 4 - Loops: 5000 - Size: 1920 x 2520 Time elapsed: 1596.171698 seconds
+
+Process: 9 - Loops: 5000 - Size: 1920 x 2520 Time elapsed: 297.929016 seconds
+
+Process: 16 - Loops: 5000 - Size: 1920 x 2520 Time elapsed: 130.340587 seconds
+
+Process: 25 - Loops: 5000 - Size: 1920 x 2520 Time elapsed: 80.741041 seconds
+
+Process: 36 - Loops: 5000 - Size: 1920 x 2520 Time elapsed: 58.631469 seconds
+
+Process: 49 - Loops: 5000 - Size: 1920 x 2520 Time elapsed: 40.601374 seconds
+
+Process: 64 - Loops: 5000 - Size: 1920 x 2520 Time elapsed: 44.114145 seconds
+
+Process: 81 - Loops: 5000 - Size: 1920 x 2520 Time elapsed: 43.604446 seconds
+
+Process: 100 - Loops: 5000 - Size: 1920 x 2520 Time elapsed: 39.804061 seconds
+
+
+
+Process: 1 - Loops: 10000 - Size: 1920 x 2520 Time elapsed: 5912.642283 seconds
+
+Process: 4 - Loops: 10000 - Size: 1920 x 2520 Time elapsed: 1550.037895 seconds
+
+Process: 9 - Loops: 10000 - Size: 1920 x 2520 Time elapsed: 560.034467 seconds
+
+Process: 16 - Loops: 10000 - Size: 1920 x 2520 Time elapsed: 269.511014 seconds
+
+Process: 25 - Loops: 10000 - Size: 1920 x 2520 Time elapsed: 158.970185 seconds
+
+Process: 36 - Loops: 10000 - Size: 1920 x 2520 Time elapsed: 115.121500 seconds
+
+Process: 49 - Loops: 10000 - Size: 1920 x 2520 Time elapsed: 79.880833 seconds
+
+Process: 64 - Loops: 10000 - Size: 1920 x 2520 Time elapsed: 90.208166 seconds
+
+Process: 81 - Loops: 10000 - Size: 1920 x 2520 Time elapsed: 90.703646 seconds
+
+Process: 100 - Loops: 10000 - Size: 1920 x 2520 Time elapsed: 82.035328 seconds
+
+
+

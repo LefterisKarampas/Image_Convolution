@@ -11,6 +11,13 @@
 #include <omp.h>
 #endif
 
+
+#define ROW 1920
+#define COL 2520
+#define LOOPS 100
+#define REDUDE_RATE 20
+#define THREADS 2
+
 static inline int convolution(unsigned char **Table,unsigned char **Final,int i,int j,float h[3][3],int num_elements){
    Final[i][j] = (unsigned char) ceil(h[0][0] * Table[i-1][j-num_elements] + 
       h[0][1] * Table[i-1][j] + h[0][2]*Table[i-1][j+num_elements] +
@@ -62,7 +69,7 @@ static inline int halo_convolution(unsigned char **Table,unsigned char **Final,i
 
 
 void Usage(char *prog_name) {
-   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops> -rate <reduce_rate> -t <threads> -o <output_file>\n", prog_name);
+   fprintf(stderr, "usage: %s -f <filename> -r <rows> -c <columns> -m <max_loops> -fil <filter> -rate <reduce_rate> -t <threads> -o <output_file>\n", prog_name);
 }  /* Usage */
 
 
@@ -73,39 +80,19 @@ int main(int argc,char **argv) {
    int i;
 
    //Create Filter
-   unsigned char k[3][3] = {{1,1,1},{1,1,1},{1,1,1}};
-   float h[3][3];
-   int sum = 0;
-   for(int i=0;i<3;i++){
-      for(int j=0;j<3;j++){
-         sum += (int)k[i][j];
-      }
-   }
-   for(int i=0;i<3;i++){
-      for(int j=0;j<3;j++){
-         h[i][j] = k[i][j]/(float)sum;
-      }
-   }
-   
+   int k[3][3] = {{0,-1,1},{0,1,0},{1,-1,0}};
 
-   /* Start up MPI */
-   MPI_Init(NULL, NULL); 
-
-
-   /* Get the number of processes */
-   MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
-   MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+   int N = ROW;
+   int M = COL;
+   int max_loops = LOOPS;
+   int reduce_rate = REDUDE_RATE;
+   int threads = THREADS;
 
    /* Read Program Arguments*/
-   int N = 1920;
-   int M = 2520;
-   int max_loops = 200;
-   int reduce_rate = 10;
    char * filename = NULL;
    char * output = NULL;
    int num_elements = 1;
    int Parallel_Write = 0;
-   int threads = 2;
    i=1;
    while(i<argc){
       if (!strcmp(argv[i], "-f")){
@@ -139,6 +126,20 @@ int main(int argc,char **argv) {
       {
          reduce_rate = atoi(argv[i+1]);
       }
+      else if(!strcmp(argv[i],"-fil"))
+      {
+         FILE *file;
+         if ((file = fopen(argv[i+1], "r")) == NULL)
+         {
+            ;
+         }
+
+         for (int i = 0; i < 3; i++)
+         {
+           fscanf(file, "%d %d %d\n",&(k[i][0]),&(k[i][1]),&(k[i][2]));
+         }
+         fclose(file);
+      }
       else{
          if(my_rank == 0){
             Usage(argv[0]);
@@ -149,26 +150,49 @@ int main(int argc,char **argv) {
       i+=2;
    }
 
+   //Normalize the filter
+   float h[3][3];
+   int sum = 0;
+   for(int i=0;i<3;i++){
+      for(int j=0;j<3;j++){
+         sum += (int)k[i][j];
+      }
+   }
+   for(int i=0;i<3;i++){
+      for(int j=0;j<3;j++){
+         if(sum != 0)
+            h[i][j] = k[i][j]/(float)sum;
+         else
+            h[i][j] = (float)k[i][j];
+      }
+   }
+   
+   /* Start up MPI */
+   MPI_Init(NULL, NULL); 
+
+
+   /* Get the number of processes */
+   MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
+   MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+
    if(my_rank == 0){
       fprintf(stderr,"N: %d\n",N);
       fprintf(stderr,"M: %d\n",M);
       fprintf(stderr,"max_loops: %d\n",max_loops);
       fprintf(stderr,"num_elements: %d\n",num_elements);
       fprintf(stderr,"reduce_rate: %d\n",reduce_rate);
+      fprintf(stderr, "Filter:\n");
+      for(int i=0;i<3;i++){
+         fprintf(stderr, "%d %d %d\n",k[i][0],k[i][1],k[i][2]);
+      }
       #ifdef _OPENMP
       fprintf(stderr,"threads: %d\n",threads);
       #endif
       if(filename != NULL){
          fprintf(stderr,"filename: %s\n",filename);
       }
-      else{
-         fprintf(stderr,"filename: NULL\n");
-      }
       if(output != NULL){
          fprintf(stderr,"output: %s\n",output);
-      }
-      else{
-         fprintf(stderr,"output: NULL\n");
       }
    }
 
@@ -187,38 +211,42 @@ int main(int argc,char **argv) {
       MPI_Abort(MPI_COMM_WORLD, 1);
    }
 
-
+   //Size of Data block per process
    int rows_per_block = ceil(N/(float)process_row);
    int cols_per_block = ceil(M /(float)process_col);
-
-
 
 
    if (my_rank == 0) {
       fprintf(stderr,"rows_per_block: %d\n",rows_per_block);
       fprintf(stderr,"cols_per_block: %d\n",cols_per_block*num_elements);
-      fprintf(stderr,"process_row: %d\n",process_row);
-      fprintf(stderr,"process_col: %d\n",process_col);
    }
    
+   /***************************Table Allocation***************************/
+   /*********************************************************************/
 
-   //Allocate Process Tables and Halo Points
+   //Allocate Process Tables
    unsigned char ** Table = (unsigned char **)malloc(sizeof(unsigned char *)*rows_per_block);
    Table[0] = (unsigned char *)malloc(sizeof(unsigned char)*rows_per_block*cols_per_block*num_elements); 
    unsigned char ** Final = (unsigned char **)malloc(sizeof(unsigned char *)*rows_per_block);
    Final[0] = (unsigned char *)malloc(sizeof(unsigned char)*rows_per_block*cols_per_block*num_elements);
   
-  for(int i=0;i<rows_per_block;i++){
+  //Convert continuous Array to 2D Array
+   for(int i=0;i<rows_per_block;i++){
       Table[i]=&(Table[0][i*cols_per_block*num_elements]);
       Final[i]=&(Final[0][i*cols_per_block*num_elements]);
    }
 
+   /***************************Halo Points***************************/
+   /****************************************************************/
 
+   //Create Halo Points structure
    Halo_points * halo_p = (Halo_points *)malloc(sizeof(Halo_points));
    Initialize_Halo(halo_p,rows_per_block,cols_per_block,num_elements);
    
 
-   //Neighbors
+   /***************************Neighbors***************************/
+   /**************************************************************/
+
    MPI_Comm comm;
    int num_dims = 2;
    int reorder = 1;
@@ -327,6 +355,8 @@ int main(int argc,char **argv) {
    
 
 
+   /***************************Parallel Read***************************/
+   /******************************************************************/
 
    MPI_Aint lb, extent; 
    MPI_Datatype etype, filetype, contig; 
@@ -369,6 +399,10 @@ int main(int argc,char **argv) {
    }
 
 
+
+   /***************************Derived DataType Allocation***************************/
+   /********************************************************************************/
+
    //Define cols datatype
    MPI_Datatype cols_type,column_type;
    MPI_Type_vector(rows_per_block,num_elements,cols_per_block*num_elements,MPI_UNSIGNED_CHAR,
@@ -376,6 +410,8 @@ int main(int argc,char **argv) {
    MPI_Type_commit(&cols_type);
    
 
+   /***************************Prepare Communication***************************/
+   /**************************************************************************/
    
    int tag = 11;
    //Create messages
@@ -429,12 +465,20 @@ int main(int argc,char **argv) {
    int changes = 0;
    int sum_changes = 0;
    double start, finish;
-
+   start = 0.0;
+   finish = 0.0;
    #ifdef _OPENMP
    omp_set_num_threads(threads);
    int lchanges = 0;
    #endif
    int j;
+
+
+
+   /***************************Convolution***************************/
+   /****************************************************************/
+
+   //Start timer for convolution
    start = MPI_Wtime();
    while(loop < max_loops){
       loop++;
@@ -447,7 +491,7 @@ int main(int argc,char **argv) {
       #ifdef _OPENMP
       if (changes>0)
         lchanges = 1;
-      #pragma omp parallel for private(i) reduction(+:changes)
+      #pragma omp parallel for private(i,lchanges) reduction(+:changes)
       #endif 
       //Do for our table
       for(j=num_elements;j<(cols_per_block-1)*num_elements;j++){
@@ -472,7 +516,7 @@ int main(int argc,char **argv) {
       #ifdef _OPENMP
       if (changes>0)
         lchanges = 1;
-      #pragma omp parallel for schedule(dynamic) reduction(+:changes) 
+      #pragma omp parallel for schedule(dynamic) private(lchanges) reduction(+:changes) 
       #endif
       for(int j=num_elements;j<(cols_per_block-1)*num_elements;j++){
          #ifdef _OPENMP
@@ -491,7 +535,7 @@ int main(int argc,char **argv) {
       #ifdef _OPENMP
       if (changes>0)
         lchanges = 1;
-      #pragma omp parallel for schedule(dynamic) reduction(+:changes) 
+      #pragma omp parallel for schedule(dynamic) private(lchanges) reduction(+:changes) 
       #endif
       for(int j=num_elements;j<(cols_per_block-1)*num_elements;j++){
          #ifdef _OPENMP
@@ -510,7 +554,7 @@ int main(int argc,char **argv) {
       #ifdef _OPENMP
       if (changes>0)
         lchanges = 1;
-      #pragma omp parallel for private(k) reduction(+:changes) 
+      #pragma omp parallel for private(k) private(lchanges) reduction(+:changes) 
       #endif
       for(i=1;i<(rows_per_block-1);i++){
          for(int k=0;k<num_elements;k++){
@@ -600,7 +644,6 @@ int main(int argc,char **argv) {
          }
       }
    }
-   
    finish = MPI_Wtime();
    
    MPI_Barrier(MPI_COMM_WORLD);
@@ -611,6 +654,10 @@ int main(int argc,char **argv) {
    if(my_rank == 0){
       printf("Time elapsed: %f seconds\n", elapsed);
    }
+
+
+   /***************************Parallel Write***************************/
+   /*******************************************************************/
 
    /* Parallel Write */
    if(my_rank == 0 && output != NULL){
@@ -694,6 +741,9 @@ int main(int argc,char **argv) {
       }
    }
 
+
+   /***************************Destroy Allocated Structures***************************/
+   /*********************************************************************************/
 
    /* Shut down MPI */
    Delete_Halo(halo_p);
